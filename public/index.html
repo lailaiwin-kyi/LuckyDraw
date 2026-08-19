@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luxury Lucky Draw</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Poppins:wght@400;500;600;700&display=swap');
+
+        :root {
+            --bg-gradient: radial-gradient(circle at center, #1b1b38 0%, #05050d 100%);
+            --gold: #ffd700;
+            --gold-light: #fff099;
+            --gold-glow: #ffae00;
+            --error-red: #ff3366;
+            --card-dark: #0e0d1a;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: #fff;
+            font-family: 'Poppins', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        h1 {
+            font-family: 'Cinzel', serif;
+            font-weight: 900;
+            font-size: 36px;
+            background: linear-gradient(180deg, #ffffff 0%, var(--gold) 60%, #b38f00 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 25px rgba(255, 215, 0, 0.4);
+            margin-top: 20px;
+            margin-bottom: 10px;
+            letter-spacing: 3px;
+        }
+
+        #user-info {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            padding: 8px 24px;
+            border-radius: 30px;
+            font-weight: 600;
+            color: var(--gold);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.15);
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        #status {
+            font-size: 14px;
+            color: #a0a0c0;
+            margin-bottom: 20px;
+            height: 22px;
+            letter-spacing: 0.5px;
+        }
+
+        /* Enhanced Wheel Outer Bezel & Ring */
+        .wheel-wrapper {
+            position: relative;
+            width: 420px;
+            height: 420px;
+            border-radius: 50%;
+            padding: 16px;
+            background: linear-gradient(135deg, #ffe082 0%, #b38f00 50%, #3a2a00 100%);
+            box-shadow: 0 0 50px rgba(255, 215, 0, 0.35), 0 0 100px rgba(0, 0, 0, 0.9);
+        }
+
+        .wheel-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 6px; left: 6px; right: 6px; bottom: 6px;
+            border-radius: 50%;
+            background: #080711;
+            z-index: 1;
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            overflow: hidden;
+            z-index: 2;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        #wheel {
+            width: 100%;
+            height: 100%;
+            transition: transform 4s cubic-bezier(0.12, 0.8, 0.15, 1);
+        }
+
+        /* Center Cap Indicator */
+        .wheel-cap {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #ffe082 0%, var(--gold) 60%, #594400 100%);
+            border: 3px solid #ffffff;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+            z-index: 10;
+        }
+
+        /* Pointer Styling */
+        #pointer {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 50px;
+            z-index: 20;
+            filter: drop-shadow(0 0 10px rgba(255, 51, 102, 0.8));
+        }
+
+        /* Button Styling */
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .spin-btn, .view-winners-btn {
+            border: none;
+            padding: 12px 32px;
+            font-size: 16px;
+            font-weight: 700;
+            font-family: 'Cinzel', serif;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .spin-btn {
+            background: linear-gradient(135deg, #ffe082 0%, var(--gold) 50%, #997a00 100%);
+            color: #1a0f00;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .spin-btn:hover:not(:disabled) {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.7);
+        }
+
+        .spin-btn:disabled {
+            filter: grayscale(1);
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .view-winners-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--gold);
+            border: 1px solid var(--gold);
+            backdrop-filter: blur(5px);
+        }
+
+        .view-winners-btn:hover {
+            background: rgba(255, 215, 0, 0.15);
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .modal-card {
+            background: linear-gradient(145deg, #161530, #080711);
+            border: 2px solid var(--gold);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            width: 360px;
+            box-shadow: 0 0 35px rgba(255, 215, 0, 0.3);
+            animation: popup 0.4s ease-out;
+        }
+
+        @keyframes popup {
+            0% { transform: scale(0.7); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        .modal-card.shake-error {
+            animation: shake 0.4s ease-in-out;
+            border-color: var(--error-red);
+            box-shadow: 0 0 30px rgba(255, 51, 102, 0.6);
+        }
+
+        .modal-card input {
+            width: 85%;
+            padding: 12px;
+            margin: 20px 0 10px 0;
+            border-radius: 10px;
+            border: 1px solid var(--gold);
+            background: #080711;
+            color: #fff;
+            text-align: center;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .error-banner {
+            display: none;
+            background: rgba(255, 51, 102, 0.15);
+            border: 1px solid var(--error-red);
+            color: #ff809b;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 15px;
+        }
+
+        .winner-title { font-family: 'Cinzel', serif; color: var(--gold); font-size: 24px; margin: 0; }
+        .winner-prize { font-size: 28px; font-weight: bold; color: #fff; text-shadow: 0 0 15px var(--gold-glow); margin: 15px 0; }
+
+        /* Public Winner List Container */
+        .winner-list-container {
+            max-height: 280px;
+            overflow-y: auto;
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        .winner-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            margin-bottom: 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 215, 0, 0.1);
+            font-size: 13px;
+        }
+
+        .winner-list-item .user-meta {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .winner-list-item .user-name {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .winner-list-item .user-id {
+            font-size: 11px;
+            color: #8a8aab;
+        }
+
+        .winner-list-item .prize-tag {
+            color: var(--gold);
+            font-weight: 600;
+            text-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.1);
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+
+        .winner-list-item .pending-tag {
+            color: #6c757d;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Login Modal -->
+    <div class="modal-overlay" id="login-modal">
+        <div class="modal-card" id="login-card">
+            <h2 class="winner-title">WELCOME</h2>
+            <p style="color: #aaa; font-size: 13px; margin-bottom: 0;">Enter your Registered Account ID</p>
+            <input type="text" id="login-id-input" placeholder="e.g. ID001" onkeydown="if(event.key==='Enter') attemptLogin()">
+            <br>
+            <button class="spin-btn" style="padding: 10px 30px; font-size: 15px; margin-top: 10px;" onclick="attemptLogin()">LOGIN</button>
+            <div class="error-banner" id="login-error"></div>
+        </div>
+    </div>
+
+    <!-- Personal Spin Completion Winner Modal -->
+    <div class="modal-overlay" id="winner-modal" style="display: none;">
+        <div class="modal-card" style="width: 380px; border-width: 3px;">
+            <p style="font-size: 45px; margin: 0;">🎉</p>
+            <h2 class="winner-title">YOU WON!</h2>
+            <div id="win-modal-user" style="color: #b3b3cc; margin-top: 8px;"></div>
+            <div class="winner-prize" id="win-modal-prize">GRAND PRIZE</div>
+            <button class="spin-btn" style="padding: 8px 25px; font-size: 14px;" onclick="closeModal('winner-modal')">CLAIM</button>
+        </div>
+    </div>
+
+    <!-- Public Winner Board Modal -->
+    <div class="modal-overlay" id="winner-list-modal" style="display: none;">
+        <div class="modal-card" style="width: 380px;">
+            <h2 class="winner-title">WINNER BOARD</h2>
+            <p style="color: #aaa; font-size: 12px; margin: 4px 0 10px 0;">Registered accounts & respective prizes</p>
+            
+            <div class="winner-list-container" id="public-winner-list"></div>
+
+            <button class="view-winners-btn" style="padding: 8px 25px; font-size: 14px; width: 100%; margin-top: 10px;" onclick="closeModal('winner-list-modal')">CLOSE</button>
+        </div>
+    </div>
+
+    <h1>LUCKY DRAW</h1>
+    <div id="user-info">Not Logged In</div>
+    <div id="status">Connecting to server...</div>
+
+    <div class="wheel-wrapper">
+        <svg id="pointer" viewBox="0 0 30 40">
+            <path d="M15 0 L30 15 L20 15 L20 40 L10 40 L10 15 L0 15 Z" fill="#ff3366"/>
+        </svg>
+        <div class="wheel-container">
+            <svg id="wheel" viewBox="0 0 400 400"></svg>
+        </div>
+        <div class="wheel-cap"></div>
+    </div>
+
+    <div class="btn-group">
+        <button id="spin-btn" class="spin-btn" disabled>SPIN NOW</button>
+        <button class="view-winners-btn" onclick="openWinnerListModal()">🏆 View Winner List</button>
+    </div>
+
+<script>
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}`);
+    
+    const wheel = document.getElementById('wheel');
+    const spinBtn = document.getElementById('spin-btn');
+    const statusText = document.getElementById('status');
+    const loginModal = document.getElementById('login-modal');
+    const loginCard = document.getElementById('login-card');
+    const loginError = document.getElementById('login-error');
+    const userInfo = document.getElementById('user-info');
+
+    let prizes = [];
+    let historyLog = []; // Full winner audit history
+    let currentRotation = 0;
+    let loggedInUserId = null;
+    let loggedInUserName = null;
+
+    // Hardcoded demo database matching server logic
+    const VALID_USERS = {
+        'ID001': 'Alice',
+        'ID002': 'Bob',
+        'ID003': 'Charlie',
+        'ID004': 'David',
+        'ID005': 'Emma'
+    };
+
+    function attemptLogin() {
+        const id = document.getElementById('login-id-input').value.trim();
+        if (!id) return;
+        ws.send(JSON.stringify({ type: 'LOGIN_USER', userId: id }));
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    function openWinnerListModal() {
+        const container = document.getElementById('public-winner-list');
+        container.innerHTML = '';
+
+        // Render status for all valid users in database
+        Object.keys(VALID_USERS).forEach(userId => {
+            const userName = VALID_USERS[userId];
+            const winRecord = historyLog.find(r => r.userId === userId);
+
+            const div = document.createElement('div');
+            div.className = 'winner-list-item';
+
+            if (winRecord) {
+                div.innerHTML = `
+                    <div class="user-meta">
+                        <span class="user-name">👤 ${userName}</span>
+                        <span class="user-id">ID: ${userId}</span>
+                    </div>
+                    <span class="prize-tag">🎁 ${winRecord.prize}</span>
+                `;
+            } else {
+                div.innerHTML = `
+                    <div class="user-meta">
+                        <span class="user-name" style="color:#aaa;">👤 ${userName}</span>
+                        <span class="user-id">ID: ${userId}</span>
+                    </div>
+                    <span class="pending-tag">Not spun yet</span>
+                `;
+            }
+            container.appendChild(div);
+        });
+
+        document.getElementById('winner-list-modal').style.display = 'flex';
+    }
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'INIT') {
+            prizes = data.prizes;
+            if (data.historyLog) historyLog = data.historyLog;
+            renderWheel();
+        } 
+        else if (data.type === 'LOGIN_RESPONSE') {
+            if (data.success) {
+                loggedInUserId = data.userId;
+                loggedInUserName = data.userName;
+                loginModal.style.display = 'none';
+                userInfo.textContent = `👤 ${loggedInUserName} (${loggedInUserId})`;
+                statusText.textContent = "Ready to spin!";
+                
+                const alreadyWon = historyLog.some(r => r.userId === loggedInUserId);
+                spinBtn.disabled = alreadyWon || prizes.length === 0;
+            } else {
+                loginError.style.display = 'block';
+                loginError.innerHTML = `⚠️ <strong>Error:</strong> ${data.error.toUpperCase()}`;
+                loginCard.classList.remove('shake-error');
+                void loginCard.offsetWidth;
+                loginCard.classList.add('shake-error');
+            }
+        }
+        else if (data.type === 'UPDATE_PRIZES') {
+            prizes = data.prizes;
+            renderWheel();
+        } 
+        else if (data.type === 'START_SPIN') {
+            spinBtn.disabled = true;
+            statusText.textContent = `🎰 Spinning in progress...`;
+            
+            const numPrizes = prizes.length;
+            const segmentAngle = 360 / numPrizes;
+            const targetAngle = 360 - (data.winningIndex * segmentAngle + segmentAngle / 2);
+            
+            const spinTurns = 8 * 360;
+            currentRotation += spinTurns + targetAngle + data.extraDegrees;
+            wheel.style.transform = `rotate(${currentRotation}deg)`;
+        } 
+        else if (data.type === 'SPIN_COMPLETE') {
+            prizes = data.prizes;
+            renderWheel();
+
+            if (data.winRecord) {
+                historyLog.push(data.winRecord);
+            }
+
+            if (data.userId === loggedInUserId) {
+                document.getElementById('win-modal-user').textContent = `${data.userName}, you won:`;
+                document.getElementById('win-modal-prize').textContent = data.wonPrize.label;
+                document.getElementById('winner-modal').style.display = 'flex';
+                statusText.textContent = `🏆 You won ${data.wonPrize.label}!`;
+                confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
+                spinBtn.disabled = true;
+            } else {
+                statusText.textContent = loggedInUserId ? "Ready to spin!" : "Please log in";
+                const alreadyWon = historyLog.some(r => r.userId === loggedInUserId);
+                if (loggedInUserId) spinBtn.disabled = alreadyWon || prizes.length === 0;
+            }
+        }
+    };
+
+    spinBtn.addEventListener('click', () => {
+        if (!loggedInUserId) return;
+        ws.send(JSON.stringify({ type: 'REQUEST_SPIN', userId: loggedInUserId }));
+    });
+
+    function renderWheel() {
+        wheel.innerHTML = '';
+        if (prizes.length === 0) {
+            statusText.textContent = "All prizes have been claimed!";
+            return;
+        }
+
+        const numPrizes = prizes.length;
+        const segmentAngle = 360 / numPrizes;
+
+        prizes.forEach((prize, index) => {
+            const startAngle = index * segmentAngle;
+            const endAngle = (index + 1) * segmentAngle;
+
+            // SVG Path with radial border lines
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", describeArc(200, 200, 195, startAngle, endAngle));
+            path.setAttribute("fill", prize.color);
+            path.setAttribute("stroke", "#ffd700");
+            path.setAttribute("stroke-width", "2");
+            wheel.appendChild(path);
+
+            // Prize Labels
+            const textAngle = startAngle + segmentAngle / 2;
+            const coords = polarToCartesian(200, 200, 130, textAngle);
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", coords.x);
+            text.setAttribute("y", coords.y);
+            text.setAttribute("transform", `rotate(${textAngle + 90}, ${coords.x}, ${coords.y})`);
+            text.setAttribute("fill", "#ffffff");
+            text.setAttribute("text-anchor", "middle");
+            text.setAttribute("font-weight", "700");
+            text.setAttribute("font-size", "13px");
+            text.setAttribute("letter-spacing", "0.5px");
+            text.style.textShadow = "0 2px 4px rgba(0,0,0,0.8)";
+            text.textContent = prize.label;
+            wheel.appendChild(text);
+        });
+    }
+
+    function polarToCartesian(cx, cy, r, angle) {
+        const rad = (angle - 90) * Math.PI / 180.0;
+        return { x: cx + (r * Math.cos(rad)), y: cy + (r * Math.sin(rad)) };
+    }
+
+    function describeArc(x, y, r, startAngle, endAngle) {
+        const start = polarToCartesian(x, y, r, endAngle);
+        const end = polarToCartesian(x, y, r, startAngle);
+        const largeArc = endAngle - startAngle <= 180 ? "0" : "1";
+        return ["M", x, y, "L", start.x, start.y, "A", r, r, 0, largeArc, 0, end.x, end.y, "Z"].join(" ");
+    }
+</script>
+</body>
+</html>

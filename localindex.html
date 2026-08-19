@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Golden Spin Panel</title>
+    
+    <!-- Canvas Confetti Library for Winner Celebration -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #060e23;
+            --panel-bg: #0c183a;
+            --gold-primary: #f0c66b;
+            --gold-accent: #f7e3a9;
+            --text-color: #f7e3a9;
+            --glow: 0 0 15px rgba(240, 198, 107, 0.7);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Georgia', serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* Screen Shake Animation on Win */
+        .shake {
+            animation: screenShake 0.5s ease-in-out;
+        }
+
+        @keyframes screenShake {
+            0%, 100% { transform: translate(0, 0); }
+            20% { transform: translate(-8px, 5px); }
+            40% { transform: translate(8px, -5px); }
+            60% { transform: translate(-5px, 3px); }
+            80% { transform: translate(5px, -3px); }
+        }
+
+        /* Background Particles */
+        #particles {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .particle {
+            position: absolute;
+            background: rgba(240, 198, 107, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0;
+            animation: float 4s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh); opacity: 1; }
+            100% { transform: translateY(-20vh); opacity: 0; }
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            padding: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Spin Wheel */
+        .wheel-container {
+            position: relative;
+            width: 420px;
+            height: 420px;
+        }
+
+        #wheel {
+            width: 100%;
+            height: 100%;
+            transform: rotate(0deg);
+            transition: transform 4s cubic-bezier(0.15, 1, 0.2, 1);
+        }
+
+        #pointer {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 32px;
+            height: 48px;
+            filter: drop-shadow(var(--glow));
+            z-index: 5;
+        }
+
+        .segment-label {
+            font-size: 13px;
+            font-weight: bold;
+            fill: var(--text-color);
+            text-anchor: middle;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.8));
+        }
+
+        /* Buttons Section */
+        .ui-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 15px;
+            z-index: 5;
+        }
+
+        .golden-btn {
+            background: linear-gradient(135deg, #ffe082 0%, var(--gold-primary) 50%, #b38f4d 100%);
+            border: 2px solid var(--gold-accent);
+            border-radius: 30px;
+            color: #3a2503;
+            padding: 14px 50px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: var(--glow), inset 0 0 10px rgba(255,255,255,0.6);
+            transition: transform 0.1s, box-shadow 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .golden-btn:hover {
+            box-shadow: 0 0 30px rgba(240, 198, 107, 0.9), inset 0 0 15px rgba(255,255,255,0.8);
+            transform: translateY(-2px);
+        }
+
+        .golden-btn:active {
+            transform: scale(0.95);
+        }
+
+        .golden-btn:disabled {
+            filter: grayscale(0.8);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* --- Winner Pop-up Overlay --- */
+        .winner-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+
+        .winner-modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .winner-card {
+            background: linear-gradient(145deg, #0f2042 0%, #060e23 100%);
+            border: 3px solid var(--gold-primary);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            width: 380px;
+            box-shadow: 0 0 40px rgba(240, 198, 107, 0.8), inset 0 0 15px rgba(240, 198, 107, 0.2);
+            transform: scale(0.5) rotate(-10deg);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+        }
+
+        .winner-modal-overlay.active .winner-card {
+            transform: scale(1) rotate(0deg);
+        }
+
+        .winner-title {
+            font-size: 28px;
+            color: var(--gold-primary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(240, 198, 107, 0.5);
+            animation: pulseGlow 1.5s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            0% { text-shadow: 0 0 10px rgba(240, 198, 107, 0.5); }
+            100% { text-shadow: 0 0 25px rgba(240, 198, 107, 1); }
+        }
+
+        .winner-prize-name {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffffff;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(240, 198, 107, 0.1);
+            border-radius: 12px;
+            border: 1px dashed var(--gold-primary);
+            word-break: break-word;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 25px;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-claim {
+            background: linear-gradient(135deg, #2ed573 0%, #1e90ff 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(46, 213, 115, 0.4);
+        }
+
+        .btn-remove-prize {
+            background: linear-gradient(135deg, #ff4757 0%, #ff6b81 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.4);
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Side Panel */
+        .panel {
+            background-color: var(--panel-bg);
+            border: 3px solid var(--gold-primary);
+            border-radius: 20px;
+            padding: 25px;
+            width: 360px;
+            box-shadow: var(--glow);
+        }
+
+        .panel-header {
+            font-size: 22px;
+            text-align: center;
+            margin-bottom: 20px;
+            color: var(--gold-accent);
+            text-transform: uppercase;
+        }
+
+        .add-prize-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input[type="text"], input[type="color"] {
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 2px solid var(--gold-primary);
+            border-radius: 10px;
+            color: var(--text-color);
+            padding: 8px 12px;
+            font-size: 15px;
+        }
+
+        input[type="text"] { flex: 1; }
+        input[type="color"] { width: 45px; height: 40px; padding: 0; cursor: pointer; }
+
+        .form-btn {
+            background: linear-gradient(135deg, #e7c27d 0%, #a1804b 100%);
+            border: 1px solid #8d703d;
+            border-radius: 8px;
+            color: #3b2a0d;
+            padding: 10px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .reset-btn {
+            background: linear-gradient(135deg, #e67e22 0%, #a0522d 100%);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        /* Prize List */
+        .prize-list {
+            margin-top: 15px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        .prize-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(240, 198, 107, 0.3);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+        }
+
+        .prize-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .prize-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 1px solid var(--gold-primary);
+        }
+
+        .delete-btn {
+            background: none;
+            border: 1px solid #ff4757;
+            border-radius: 5px;
+            color: #ff4757;
+            cursor: pointer;
+            font-size: 11px;
+            padding: 3px 6px;
+        }
+    </style>
+</head>
+<body id="body">
+
+<div id="particles"></div>
+
+<div class="container">
+    <div class="wheel-section">
+        <div class="wheel-container">
+            <svg id="pointer" viewBox="0 0 30 45">
+                <path d="M15 0 L30 15 L20 15 L20 45 L10 45 L10 15 L0 15 Z" fill="#ff4757"/>
+            </svg>
+            <svg id="wheel" viewBox="0 0 400 400"></svg>
+        </div>
+        <div class="ui-buttons">
+            <button id="spin-btn" class="golden-btn">SPIN</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">Golden Spin Panel</div>
+        
+        <div class="add-prize-form">
+            <div class="input-row">
+                <input type="text" id="prize-name" placeholder="Prize Label">
+                <input type="color" id="prize-color" value="#a11c47">
+            </div>
+            <button class="form-btn" onclick="addCustomPrize()">Add Prize</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="margin: 0;">Prize List</h4>
+            <button class="reset-btn" onclick="resetToDefault()">Reset Default</button>
+        </div>
+        
+        <div class="prize-list" id="prize-list-items"></div>
+    </div>
+</div>
+
+<!-- Winner Pop-up Modal -->
+<div class="winner-modal-overlay" id="winner-modal">
+    <div class="winner-card">
+        <div class="winner-title">🏆 CONGRATULATIONS! 🏆</div>
+        <p style="color: var(--gold-accent); margin: 0;">YOU HAVE WON</p>
+        <div class="winner-prize-name" id="winner-name-text">Prize 1</div>
+        <div class="modal-buttons">
+            <button class="modal-btn btn-claim" onclick="closeWinnerModal(false)">Keep Prize</button>
+            <button class="modal-btn btn-remove-prize" onclick="closeWinnerModal(true)">Remove Prize</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const wheel = document.getElementById('wheel');
+    const spinBtn = document.getElementById('spin-btn');
+    const prizeListItems = document.getElementById('prize-list-items');
+    const winnerModal = document.getElementById('winner-modal');
+    const winnerNameText = document.getElementById('winner-name-text');
+    const body = document.getElementById('body');
+
+    // Audio Effects (Web Audio API Synthesizer)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playSpinClickSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+    }
+
+    function playWinSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99]; // C E G C E G
+        notes.forEach((freq, index) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + index * 0.1);
+            gain.gain.setValueAtTime(0.15, now + index * 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.1 + 0.3);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now + index * 0.1);
+            osc.stop(now + index * 0.1 + 0.3);
+        });
+    }
+
+    const defaultPrizes = [
+        { label: "Prize 1", color: "#0a4d70" },
+        { label: "Prize 2", color: "#a11c47" },
+        { label: "Prize 3", color: "#0a4d70" },
+        { label: "Prize 4", color: "#a11c47" },
+        { label: "Prize 5", color: "#0a4d70" },
+        { label: "Prize 6", color: "#a11c47" },
+        { label: "Prize 7", color: "#0a4d70" },
+        { label: "Prize 8", color: "#a11c47" }
+    ];
+
+    let prizes = [...defaultPrizes];
+    let isSpinning = false;
+    let currentRotation = 0;
+    let lastWinningIndex = -1;
+
+    function renderWheel() {
+        wheel.innerHTML = '';
+        const numPrizes = prizes.length;
+        if (numPrizes === 0) return;
+        const segmentAngle = 360 / numPrizes;
+
+        // Outer Golden Ring
+        const outerRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        outerRing.setAttribute("cx", "200");
+        outerRing.setAttribute("cy", "200");
+        outerRing.setAttribute("r", "195");
+        outerRing.setAttribute("stroke", "#f0c66b");
+        outerRing.setAttribute("stroke-width", "6");
+        outerRing.setAttribute("fill", "none");
+        wheel.appendChild(outerRing);
+
+        prizes.forEach((prize, index) => {
+            const startAngle = index * segmentAngle;
+            const endAngle = (index + 1) * segmentAngle;
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", describeArc(200, 200, 190, startAngle, endAngle));
+            path.setAttribute("fill", prize.color);
+            path.setAttribute("stroke", "#f0c66b");
+            path.setAttribute("stroke-width", "2");
+            wheel.appendChild(path);
+
+            const textAngle = startAngle + segmentAngle / 2;
+            const textCoords = polarToCartesian(200, 200, 135, textAngle);
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", textCoords.x);
+            text.setAttribute("y", textCoords.y);
+            text.setAttribute("transform", `rotate(${textAngle + 90}, ${textCoords.x}, ${textCoords.y})`);
+            text.setAttribute("class", "segment-label");
+            text.textContent = prize.label;
+            wheel.appendChild(text);
+        });
+
+        // Center Cap
+        const centerCap = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        centerCap.setAttribute("cx", "200");
+        centerCap.setAttribute("cy", "200");
+        centerCap.setAttribute("r", "28");
+        centerCap.setAttribute("fill", "#f0c66b");
+        centerCap.setAttribute("stroke", "#b38f4d");
+        centerCap.setAttribute("stroke-width", "4");
+        wheel.appendChild(centerCap);
+
+        renderPrizeList();
+    }
+
+    function renderPrizeList() {
+        prizeListItems.innerHTML = '';
+        prizes.forEach((prize, index) => {
+            const item = document.createElement('div');
+            item.className = 'prize-item';
+            item.innerHTML = `
+                <div class="prize-info">
+                    <div class="prize-color" style="background-color: ${prize.color};"></div>
+                    <div class="prize-label">${prize.label}</div>
+                </div>
+                <button class="delete-btn" onclick="deletePrize(${index})">Delete</button>
+            `;
+            prizeListItems.appendChild(item);
+        });
+    }
+
+    function addCustomPrize() {
+        if (isSpinning) return;
+        const nameInput = document.getElementById('prize-name');
+        const colorInput = document.getElementById('prize-color');
+        
+        if (nameInput.value.trim() === '') return;
+
+        prizes.push({
+            label: nameInput.value.trim(),
+            color: colorInput.value
+        });
+        nameInput.value = '';
+        renderWheel();
+    }
+
+    function deletePrize(index) {
+        if (isSpinning) return;
+        prizes.splice(index, 1);
+        renderWheel();
+    }
+
+    function resetToDefault() {
+        if (isSpinning) return;
+        prizes = [...defaultPrizes];
+        renderWheel();
+    }
+
+    function triggerConfetti() {
+        confetti({
+            particleCount: 120,
+            spread: 80,
+            origin: { y: 0.6 },
+            colors: ['#f0c66b', '#ffffff', '#ff4757', '#2ed573']
+        });
+    }
+
+    function spinWheel() {
+        if (isSpinning || prizes.length === 0) return;
+        isSpinning = true;
+        spinBtn.disabled = true;
+
+        const numPrizes = prizes.length;
+        const segmentAngle = 360 / numPrizes;
+        const extraDegrees = Math.floor(Math.random() * 360);
+        const spinTurns = 8 * 360;
+        const finalRotation = currentRotation + spinTurns + extraDegrees;
+
+        currentRotation = finalRotation;
+        wheel.style.transform = `rotate(${finalRotation}deg)`;
+
+        // Sound Ticks during spin
+        let soundInterval = setInterval(() => {
+            playSpinClickSound();
+        }, 150);
+
+        setTimeout(() => {
+            clearInterval(soundInterval);
+
+            const actualRotation = finalRotation % 360;
+            const winningAngle = (360 - actualRotation) % 360;
+            lastWinningIndex = Math.floor(winningAngle / segmentAngle);
+            const winner = prizes[lastWinningIndex];
+
+            // Celebration Effects
+            playWinSound();
+            triggerConfetti();
+            
+            // Screen Shake Effect
+            body.classList.add('shake');
+            setTimeout(() => body.classList.remove('shake'), 500);
+
+            // Display Winner Modal
+            winnerNameText.textContent = winner.label;
+            winnerModal.classList.add('active');
+
+            isSpinning = false;
+            spinBtn.disabled = false;
+        }, 4000);
+    }
+
+    function closeWinnerModal(shouldRemove) {
+        winnerModal.classList.remove('active');
+        if (shouldRemove && lastWinningIndex !== -1) {
+            deletePrize(lastWinningIndex);
+        }
+    }
+
+    // Helper Math Functions
+    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+        const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+        return {
+            x: centerX + (radius * Math.cos(angleInRadians)),
+            y: centerY + (radius * Math.sin(angleInRadians))
+        };
+    }
+
+    function describeArc(x, y, radius, startAngle, endAngle) {
+        const start = polarToCartesian(x, y, radius, endAngle);
+        const end = polarToCartesian(x, y, radius, startAngle);
+        const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+        return [
+            "M", x, y,
+            "L", start.x, start.y,
+            "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y,
+            "Z"
+        ].join(" ");
+    }
+
+    spinBtn.addEventListener('click', spinWheel);
+    renderWheel();
+</script>
+
+</body>
+</html>

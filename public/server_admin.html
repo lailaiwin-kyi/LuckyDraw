@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Admin Command Center</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+
+        :root {
+            --bg-dark: #0a0e17;
+            --card-bg: #131b2e;
+            --cyan-accent: #00f2fe;
+            --purple-accent: #4facfe;
+            --text-main: #f0f4f8;
+            --text-muted: #8a99ad;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 30px;
+        }
+
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 950px;
+            margin: 0 auto 30px auto;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 15px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0;
+            background: linear-gradient(45deg, var(--cyan-accent), var(--purple-accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            background: rgba(0, 242, 254, 0.1);
+            border: 1px solid var(--cyan-accent);
+            color: var(--cyan-accent);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .grid {
+            display: flex;
+            gap: 25px;
+            justify-content: center;
+            max-width: 950px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 22px;
+            width: 50%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .card h3 {
+            color: var(--text-main);
+            font-size: 16px;
+            margin-top: 0;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 10px;
+        }
+
+        .form-group { display: flex; gap: 10px; margin-bottom: 15px; }
+
+        input[type="text"] {
+            flex: 1; padding: 10px 12px; border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1); background: #080c14; color: #fff;
+            outline: none;
+        }
+
+        input[type="color"] { width: 45px; height: 40px; border: none; cursor: pointer; border-radius: 8px; background: transparent; }
+
+        button {
+            background: linear-gradient(45deg, var(--cyan-accent), var(--purple-accent));
+            color: #000; border: none;
+            padding: 10px 18px; font-weight: 600; border-radius: 8px; cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover { opacity: 0.85; }
+
+        .btn-reset { background: linear-gradient(45deg, #ff9900, #ff5500); color: #fff; }
+        .btn-delete { background: #ff3366; color: #fff; padding: 4px 8px; font-size: 11px; }
+
+        .prize-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px; background: rgba(255,255,255,0.02); margin-bottom: 8px; border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .user-tag {
+            display: inline-block; background: rgba(255,255,255,0.05); padding: 3px 8px; border-radius: 4px;
+            font-family: monospace; font-size: 12px; color: var(--cyan-accent); margin-right: 4px;
+        }
+
+        .history-list { max-height: 280px; overflow-y: auto; }
+        .history-item { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; color: var(--text-muted); }
+        .history-item strong { color: var(--text-main); }
+    </style>
+</head>
+<body>
+
+    <div class="header-bar">
+        <h1>CONTROL CENTER</h1>
+        <span class="status-badge">● LIVE SERVER CONNECTED</span>
+    </div>
+
+    <div class="grid">
+        <!-- Prize Management -->
+        <div class="card">
+            <h3>⚙️ Wheel Prize Manager</h3>
+            <div class="form-group">
+                <input type="text" id="prize-name" placeholder="New Prize Name">
+                <input type="color" id="prize-color" value="#a11c47">
+                <button onclick="addPrize()">Add</button>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 12px; color: var(--text-muted);">Active Wheel Items</span>
+                <button class="btn-reset" style="padding: 6px 12px; font-size: 12px;" onclick="resetPrizes()">Reset Default</button>
+            </div>
+            <div id="prize-list"></div>
+        </div>
+
+        <!-- User Testing & Winner Log -->
+        <div class="card">
+            <h3>👥 User Access & Audit Logs</h3>
+            <div style="margin-bottom: 15px;">
+                <span style="font-size: 11px; color: var(--text-muted);">VALID IDS:</span><br>
+                <span class="user-tag">ID001</span><span class="user-tag">ID002</span><span class="user-tag">ID003</span><span class="user-tag">ID004</span><span class="user-tag">ID005</span>
+            </div>
+            <button class="btn-reset" style="width: 100%; margin-bottom: 20px; padding: 10px;" onclick="resetSpunUsers()">Reset Spin Limits for All Users</button>
+
+            <h3 style="border: none; margin-bottom: 5px;">📜 Private Server Winner History</h3>
+            <div class="history-list" id="history-list"></div>
+        </div>
+    </div>
+
+<script>
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}`);
+    let prizes = [];
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'INIT') {
+            prizes = data.prizes;
+            renderPrizes();
+            renderHistory(data.historyLog);
+        } else if (data.type === 'UPDATE_PRIZES' || data.type === 'SPIN_COMPLETE') {
+            if (data.prizes) prizes = data.prizes;
+            renderPrizes();
+            if (data.winRecord) addHistoryRecord(data.winRecord);
+        }
+    };
+
+    function renderPrizes() {
+        const container = document.getElementById('prize-list');
+        container.innerHTML = '';
+        prizes.forEach((prize, index) => {
+            const div = document.createElement('div');
+            div.className = 'prize-item';
+            div.innerHTML = `
+                <span><strong style="color:${prize.color}">■</strong> ${prize.label}</span>
+                <button class="btn-delete" onclick="removePrize(${index})">Delete</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    function addHistoryRecord(record) {
+        const container = document.getElementById('history-list');
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `🏆 <strong>${record.userName}</strong> (${record.userId}) won <span style="color:var(--cyan-accent); font-weight:600;">${record.prize}</span> at ${record.time}`;
+        container.prepend(div);
+    }
+
+    function renderHistory(list) {
+        const container = document.getElementById('history-list');
+        container.innerHTML = '';
+        list.forEach(record => addHistoryRecord(record));
+    }
+
+    function addPrize() {
+        const name = document.getElementById('prize-name').value.trim();
+        const color = document.getElementById('prize-color').value;
+        if (!name) return;
+        ws.send(JSON.stringify({ type: 'ADD_PRIZE', prize: { label: name, color } }));
+        document.getElementById('prize-name').value = '';
+    }
+
+    function removePrize(index) {
+        ws.send(JSON.stringify({ type: 'REMOVE_PRIZE', index }));
+    }
+
+    function resetPrizes() {
+        ws.send(JSON.stringify({ type: 'RESET_PRIZES' }));
+    }
+
+    function resetSpunUsers() {
+        ws.send(JSON.stringify({ type: 'RESET_SPUN_USERS' }));
+    }
+</script>
+</body>
+</html>

@@ -18,7 +18,28 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// Helper Function: Frontend ဘက်က ဘယ် Property Key နာမည်နဲ့ဖတ်ဖတ် ရအောင် Alias အားလုံးထည့်သွင်းပေးထားပါသည်
+// Helper Function: Fetch all users from Database
+async function getAllUsersFromDB() {
+    try {
+        const res = await pool.query(`
+            SELECT 
+                user_id AS "user_id",
+                user_id AS "userId",
+                name AS "name",
+                has_spun AS "has_spun",
+                won_prize AS "won_prize",
+                TO_CHAR(spun_at, 'HH12:MI:SS AM') AS "spun_at"
+            FROM users 
+            ORDER BY user_id ASC
+        `);
+        return res.rows;
+    } catch (err) {
+        console.error('Error fetching users:', err.message);
+        return [];
+    }
+}
+
+// Helper Function: Fetch winners list
 async function getWinnersFromDB() {
     try {
         const res = await pool.query(`
@@ -26,6 +47,7 @@ async function getWinnersFromDB() {
                 user_id AS "userId",
                 user_id AS "userid",
                 user_id AS "id",
+                user_id AS "user_id",
                 name AS "userName",
                 name AS "username",
                 name AS "name",
@@ -44,7 +66,15 @@ async function getWinnersFromDB() {
     }
 }
 
-// Initialize Database Table & Insert Default Users if empty
+// Broadcast Users & Winners Updates
+async function broadcastUserData() {
+    const users = await getAllUsersFromDB();
+    const winners = await getWinnersFromDB();
+    broadcast({ type: 'UPDATE_USERS', users });
+    broadcast({ type: 'UPDATE_WINNERS', historyLog: winners, winners });
+}
+
+// Initialize Database Table
 async function initDatabase() {
     try {
         await pool.query(`
@@ -57,7 +87,6 @@ async function initDatabase() {
             )
         `);
 
-        // Check if table is empty, insert initial demo users
         const countRes = await pool.query('SELECT COUNT(*) as count FROM users');
         if (parseInt(countRes.rows[0].count) === 0) {
             await pool.query(`
@@ -106,13 +135,15 @@ function broadcast(data) {
 
 wss.on('connection', async (ws) => {
     historyLog = await getWinnersFromDB();
+    const usersList = await getAllUsersFromDB();
 
     ws.send(JSON.stringify({ 
         type: 'INIT', 
         prizes, 
         isSpinning, 
         historyLog,
-        winners: historyLog 
+        winners: historyLog,
+        users: usersList
     }));
 
     ws.on('message', async (message) => {
@@ -122,7 +153,6 @@ wss.on('connection', async (ws) => {
             // 1. User Login Verification
             if (data.type === 'LOGIN_USER') {
                 const userId = (data.userId || '').trim();
-
                 const res = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
 
                 if (res.rows.length === 0) {
@@ -142,7 +172,6 @@ wss.on('connection', async (ws) => {
             // 2. Spin Request
             if (data.type === 'REQUEST_SPIN' && !isSpinning && prizes.length > 0) {
                 const userId = data.userId;
-
                 const res = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
 
                 if (res.rows.length === 0) {
@@ -206,10 +235,12 @@ wss.on('connection', async (ws) => {
                         historyLog,
                         winners: historyLog
                     });
+                    
+                    await broadcastUserData();
                 }, 4100);
             }
 
-            // 3. Admin Actions
+            // 3. Admin Wheel Actions
             if (data.type === 'ADD_PRIZE' && !isSpinning) {
                 prizes.push(data.prize);
                 broadcast({ type: 'UPDATE_PRIZES', prizes });
@@ -234,12 +265,28 @@ wss.on('connection', async (ws) => {
                     historyLog: [],
                     winners: [] 
                 });
-                broadcast({
-                    type: 'UPDATE_WINNERS',
-                    historyLog: [],
-                    winners: []
-                });
+                await broadcastUserData();
             }
+
+            // 4. USER CRUD OPERATIONS (Insert, Update, Delete)
+            if (data.type === 'ADD_USER') {
+                const { userId, name } = data;
+                await pool.query('INSERT INTO users (user_id, name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING', [userId, name]);
+                await broadcastUserData();
+            }
+
+            if (data.type === 'UPDATE_USER') {
+                const { userId, name } = data;
+                await pool.query('UPDATE users SET name = $1 WHERE user_id = $2', [name, userId]);
+                await broadcastUserData();
+            }
+
+            if (data.type === 'DELETE_USER') {
+                const { userId } = data;
+                await pool.query('DELETE FROM users WHERE user_id = $1', [userId]);
+                await broadcastUserData();
+            }
+
         } catch (err) {
             console.error('WebSocket Message Processing Error:', err.message);
         }

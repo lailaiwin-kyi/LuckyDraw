@@ -78,7 +78,7 @@
             width: 100%;
         }
         button {
-            padding: 10px 18px;
+            padding: 8px 14px;
             border-radius: 6px;
             border: none;
             background: #0ea5e9;
@@ -87,18 +87,13 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        button:hover {
-            opacity: 0.9;
-        }
-        button.danger {
-            background: #ef4444;
-        }
-        button.warning {
-            background: #f97316;
-        }
+        button:hover { opacity: 0.9; }
+        button.danger { background: #ef4444; }
+        button.warning { background: #f97316; }
+        button.success { background: #22c55e; }
         ul {
             list-style: none;
-            max-height: 280px;
+            max-height: 250px;
             overflow-y: auto;
         }
         li {
@@ -108,20 +103,19 @@
             justify-content: space-between;
             align-items: center;
         }
-        .valid-ids {
+        .user-item {
             display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 15px;
+            align-items: center;
+            justify-content: space-between;
+            background: #0d1726;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border-left: 3px solid #0ea5e9;
         }
-        .id-badge {
-            background: #0f2d3e;
-            color: #38bdf8;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            border: 1px solid #1e4f6e;
+        .user-actions {
+            display: flex;
+            gap: 6px;
         }
         .winner-item {
             padding: 12px;
@@ -160,30 +154,29 @@
             <ul id="prizeList"></ul>
         </div>
 
-        <!-- User Access & Audit Logs Card -->
+        <!-- User Access & Management Card -->
         <div class="card">
-            <h2>👥 User Access & Audit Logs</h2>
+            <h2>👥 User Management (CRUD)</h2>
             
-            <div style="margin-bottom: 15px;">
-                <span style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 6px;">VALID IDs:</span>
-                <div class="valid-ids">
-                    <span class="id-badge">ID001</span>
-                    <span class="id-badge">ID002</span>
-                    <span class="id-badge">ID003</span>
-                    <span class="id-badge">ID004</span>
-                    <span class="id-badge">ID005</span>
-                </div>
+            <!-- User Insert Form -->
+            <div class="form-group">
+                <input type="text" id="newUserId" placeholder="User ID (e.g. ID006)">
+                <input type="text" id="newUserName" placeholder="Name (e.g. John)">
+                <button class="success" id="addUserBtn">Add User</button>
             </div>
 
-            <button class="warning" id="resetSpunsBtn" style="width: 100%; padding: 12px; font-size: 0.95rem; margin-bottom: 20px;">
+            <button class="warning" id="resetSpunsBtn" style="width: 100%; padding: 10px; font-size: 0.9rem; margin-bottom: 15px;">
                 Reset Spin Limits for All Users
             </button>
+
+            <h3 style="font-size: 0.85rem; color: #64748b; margin-bottom: 8px;">Registered Users List</h3>
+            <div id="usersList" style="max-height: 180px; overflow-y: auto; margin-bottom: 20px;"></div>
 
             <h3 style="font-size: 0.95rem; color: #cbd5e1; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
                 📜 Private Server Winner History
             </h3>
             
-            <div id="winnerHistory" style="max-height: 200px; overflow-y: auto;">
+            <div id="winnerHistory" style="max-height: 180px; overflow-y: auto;">
                 <p style="color: #64748b; font-size: 0.85rem;">No winners yet...</p>
             </div>
         </div>
@@ -201,6 +194,11 @@
         const resetSpunsBtn = document.getElementById('resetSpunsBtn');
         const winnerHistory = document.getElementById('winnerHistory');
 
+        const newUserId = document.getElementById('newUserId');
+        const newUserName = document.getElementById('newUserName');
+        const addUserBtn = document.getElementById('addUserBtn');
+        const usersList = document.getElementById('usersList');
+
         let prizes = [];
 
         function renderPrizeList() {
@@ -212,41 +210,82 @@
             `).join('');
         }
 
-       function renderWinnerList(winners) {
-    if (!winners || winners.length === 0) {
-        winnerHistory.innerHTML = '<p style="color: #64748b; font-size: 0.85rem;">No winners yet...</p>';
-        return;
-    }
+        function renderUsersList(users) {
+            if (!users || users.length === 0) {
+                usersList.innerHTML = '<p style="color: #64748b; font-size: 0.85rem;">No users found.</p>';
+                return;
+            }
 
-    winnerHistory.innerHTML = winners.map(w => {
-        // Name, User ID နှင့် Prize အမည်များ သေချာစေရန် fallback လုပ်ထားခြင်း
-        const userName = w.name || w.userName || w.username || 'User';
-        const prizeName = w.won_prize || w.prize || w.prizeName || 'Prize';
+            usersList.innerHTML = users.map(u => `
+                <div class="user-item">
+                    <span style="font-size: 0.85rem;">
+                        <b style="color:#38bdf8;">${u.user_id}</b> - ${u.name} 
+                        ${u.has_spun ? '<span style="color:#f97316; font-size: 0.75rem;">(Spun)</span>' : ''}
+                    </span>
+                    <div class="user-actions">
+                        <button onclick="editUser('${u.user_id}', '${u.name}')" style="padding: 3px 8px; font-size: 0.75rem;">Edit</button>
+                        <button class="danger" onclick="deleteUser('${u.user_id}')" style="padding: 3px 8px; font-size: 0.75rem;">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
 
-        return `
-            <div class="winner-item">
-                🏆 <strong>${userName}</strong> won <span style="color: #38bdf8; font-weight: bold;">${prizeName}</span>
-            </div>
-        `;
-    }).join('');
-}
-       // ✅ (undefined) ကို ဖြုတ်ထားသော ပြင်ဆင်ပြီး Code
+        function renderWinnerList(winners) {
+            if (!winners || winners.length === 0) {
+                winnerHistory.innerHTML = '<p style="color: #64748b; font-size: 0.85rem;">No winners yet...</p>';
+                return;
+            }
+
+            winnerHistory.innerHTML = winners.map(w => {
+                const userName = w.name || w.userName || w.username || 'User';
+                const prizeName = w.won_prize || w.prize || w.prizeName || 'Prize';
+
+                return `
+                    <div class="winner-item">
+                        🏆 <strong>${userName}</strong> won <span style="color: #38bdf8; font-weight: bold;">${prizeName}</span>
+                    </div>
+                `;
+            }).join('');
+        }
 
         function removePrize(index) {
             ws.send(JSON.stringify({ type: 'REMOVE_PRIZE', index }));
         }
 
+        function editUser(userId, currentName) {
+            const newName = prompt(`Update Name for User ID: ${userId}`, currentName);
+            if (newName && newName.trim() !== '') {
+                ws.send(JSON.stringify({ type: 'UPDATE_USER', userId, name: newName.trim() }));
+            }
+        }
+
+        function deleteUser(userId) {
+            if (confirm(`Are you sure you want to delete user ${userId}?`)) {
+                ws.send(JSON.stringify({ type: 'DELETE_USER', userId }));
+            }
+        }
+
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
 
-            if (data.type === 'INIT' || data.type === 'UPDATE_PRIZES') {
+            if (data.type === 'INIT') {
                 prizes = data.prizes;
                 renderPrizeList();
                 if (data.winners) renderWinnerList(data.winners);
+                if (data.users) renderUsersList(data.users);
+            }
+
+            if (data.type === 'UPDATE_PRIZES') {
+                prizes = data.prizes;
+                renderPrizeList();
             }
 
             if (data.type === 'UPDATE_WINNERS') {
                 renderWinnerList(data.winners);
+            }
+
+            if (data.type === 'UPDATE_USERS') {
+                renderUsersList(data.users);
             }
         };
 
@@ -260,6 +299,19 @@
                 prize: { label, color } 
             }));
             prizeLabel.value = '';
+        });
+
+        addUserBtn.addEventListener('click', () => {
+            const userId = newUserId.value.trim();
+            const name = newUserName.value.trim();
+            if (!userId || !name) {
+                alert("Please fill in both User ID and Name");
+                return;
+            }
+
+            ws.send(JSON.stringify({ type: 'ADD_USER', userId, name }));
+            newUserId.value = '';
+            newUserName.value = '';
         });
 
         resetPrizesBtn.addEventListener('click', () => {

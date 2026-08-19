@@ -18,15 +18,20 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// Helper Function: Database ထဲမှ မဲပေါက်ဖူးသူများကို ဆွဲထုတ်ရန် (Property Key များကို Admin ရော Client ပါ ကိုင်တွယ်နိုင်အောင် ညှိထားပါသည်)
+// Helper Function: Frontend ဘက်က ဘယ် Property Key နာမည်နဲ့ဖတ်ဖတ် ရအောင် Alias အားလုံးထည့်သွင်းပေးထားပါသည်
 async function getWinnersFromDB() {
     try {
         const res = await pool.query(`
             SELECT 
-                user_id AS "userId", 
-                name AS "userName", 
+                user_id AS "userId",
+                user_id AS "userid",
+                user_id AS "id",
+                name AS "userName",
+                name AS "username",
+                name AS "name",
                 won_prize AS "prize", 
                 won_prize AS "won_prize", 
+                won_prize AS "prizeName",
                 TO_CHAR(spun_at, 'HH12:MI:SS AM') AS "time" 
             FROM users 
             WHERE has_spun = 1 AND won_prize IS NOT NULL 
@@ -176,15 +181,20 @@ wss.on('connection', async (ws) => {
                         [wonPrize.label, userId]
                     );
 
+                    historyLog = await getWinnersFromDB();
+
                     const winRecord = {
                         userId,
+                        userid: userId,
+                        id: userId,
                         userName: res.rows[0].name,
+                        username: res.rows[0].name,
+                        name: res.rows[0].name,
                         prize: wonPrize.label,
                         won_prize: wonPrize.label,
+                        prizeName: wonPrize.label,
                         time: timeString
                     };
-                    
-                    historyLog = await getWinnersFromDB();
 
                     broadcast({
                         type: 'SPIN_COMPLETE',

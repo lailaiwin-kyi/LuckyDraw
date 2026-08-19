@@ -3,7 +3,7 @@ const express = require('express');
 const { WebSocketServer, WebSocket } = require('ws');
 const http = require('http');
 const path = require('path');
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 
 const app = express();
 const server = http.createServer(app);
@@ -12,28 +12,23 @@ const wss = new WebSocketServer({ server });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// MySQL Database Connection Pool
-const db = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'luckydraw',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+// Render PostgreSQL Database Connection
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
 // Helper Function: Database ထဲမှ မဲပေါက်ဖူးသူများကို ဆွဲထုတ်ရန်
 async function getWinnersFromDB() {
     try {
-        const [rows] = await db.query(`
-            SELECT user_id AS userId, name AS userName, won_prize AS prize, 
-            DATE_FORMAT(spun_at, '%h:%i:%s %p') AS time 
+        const res = await pool.query(`
+            SELECT user_id AS "userId", name AS "userName", won_prize AS "prize", 
+            TO_CHAR(spun_at, 'HH12:MI:SS AM') AS "time" 
             FROM users 
             WHERE has_spun = 1 AND won_prize IS NOT NULL 
             ORDER BY spun_at DESC
         `);
-        return rows;
+        return res.rows;
     } catch (err) {
         console.error('Error fetching winners:', err.message);
         return [];
@@ -43,20 +38,20 @@ async function getWinnersFromDB() {
 // Initialize Database Table & Insert Default Users if empty
 async function initDatabase() {
     try {
-        await db.query(`
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 user_id VARCHAR(50) PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
-                has_spun TINYINT(1) DEFAULT 0,
+                has_spun INT DEFAULT 0,
                 won_prize VARCHAR(100) DEFAULT NULL,
                 spun_at TIMESTAMP NULL DEFAULT NULL
             )
         `);
 
         // Check if table is empty, insert initial demo users
-        const [rows] = await db.query('SELECT COUNT(*) as count FROM users');
-        if (rows[0].count === 0) {
-            await db.query(`
+        const countRes = await pool.query('SELECT COUNT(*) as count FROM users');
+        if (parseInt(countRes.rows[0].count) === 0) {
+            await pool.query(`
                 INSERT INTO users (user_id, name) VALUES 
                 ('ID001', 'Alice'),
                 ('ID002', 'Bob'),
@@ -64,13 +59,11 @@ async function initDatabase() {
                 ('ID004', 'David'),
                 ('ID005', 'Emma')
             `);
-            console.log('✅ Default users inserted into MySQL.');
+            console.log('✅ Default users inserted into PostgreSQL.');
         }
 
-        // Database ပွင့်လာပါက History Log ထဲသို့ DB မှ မဲပေါက်သူများ ကြိုတင်ထည့်သွင်းပေးခြင်း
         historyLog = await getWinnersFromDB();
-
-        console.log('✅ Connected to MySQL Database successfully.');
+        console.log('✅ Connected to PostgreSQL Database successfully.');
     } catch (err) {
         console.error('❌ Database Initialization Error:', err.message);
     }
@@ -103,10 +96,8 @@ function broadcast(data) {
 }
 
 wss.on('connection', async (ws) => {
-    // Connection အသစ်ဝင်လာပါက DB မှ Winner List အဆန်းဆုံးကို ယူ၍ ပို့ပေးခြင်း
     historyLog = await getWinnersFromDB();
 
-    // Send initial state upon connection (winners property အပါအဝင်)
     ws.send(JSON.stringify({ 
         type: 'INIT', 
         prizes, 
@@ -123,18 +114,18 @@ wss.on('connection', async (ws) => {
             if (data.type === 'LOGIN_USER') {
                 const userId = (data.userId || '').trim();
 
-                const [rows] = await db.query('SELECT * FROM users WHERE user_id = ?', [userId]);
+                const res = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
 
-                if (rows.length === 0) {
+                if (res.rows.length === 0) {
                     ws.send(JSON.stringify({ type: 'LOGIN_RESPONSE', success: false, error: 'invalid user' }));
-                } else if (rows[0].has_spun === 1) {
+                } else if (res.rows[0].has_spun === 1) {
                     ws.send(JSON.stringify({ type: 'LOGIN_RESPONSE', success: false, error: 'you already spinned' }));
                 } else {
                     ws.send(JSON.stringify({ 
                         type: 'LOGIN_RESPONSE', 
                         success: true, 
-                        userId: rows[0].user_id, 
-                        userName: rows[0].name 
+                        userId: res.rows[0].user_id, 
+                        userName: res.rows[0].name 
                     }));
                 }
             }
@@ -143,21 +134,19 @@ wss.on('connection', async (ws) => {
             if (data.type === 'REQUEST_SPIN' && !isSpinning && prizes.length > 0) {
                 const userId = data.userId;
 
-                // Double check validity from MySQL
-                const [rows] = await db.query('SELECT * FROM users WHERE user_id = ?', [userId]);
+                const res = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
 
-                if (rows.length === 0) {
+                if (res.rows.length === 0) {
                     ws.send(JSON.stringify({ type: 'SPIN_ERROR', error: 'invalid user' }));
                     return;
                 }
 
-                if (rows[0].has_spun === 1) {
+                if (res.rows[0].has_spun === 1) {
                     ws.send(JSON.stringify({ type: 'SPIN_ERROR', error: 'you already spinned' }));
                     return;
                 }
 
-                // Mark user as spun in DB immediately
-                await db.query('UPDATE users SET has_spun = 1 WHERE user_id = ?', [userId]);
+                await pool.query('UPDATE users SET has_spun = 1 WHERE user_id = $1', [userId]);
                 isSpinning = true;
 
                 const winningIndex = Math.floor(Math.random() * prizes.length);
@@ -168,37 +157,35 @@ wss.on('connection', async (ws) => {
                     winningIndex,
                     extraDegrees,
                     userId,
-                    userName: rows[0].name
+                    userName: res.rows[0].name
                 });
 
                 setTimeout(async () => {
                     const wonPrize = prizes[winningIndex];
-                    prizes.splice(winningIndex, 1); // Automatically remove won prize
+                    prizes.splice(winningIndex, 1);
                     isSpinning = false;
 
                     const timeString = new Date().toLocaleTimeString();
 
-                    // Update database record with won prize
-                    await db.query(
-                        'UPDATE users SET won_prize = ?, spun_at = NOW() WHERE user_id = ?',
+                    await pool.query(
+                        'UPDATE users SET won_prize = $1, spun_at = NOW() WHERE user_id = $2',
                         [wonPrize.label, userId]
                     );
 
                     const winRecord = {
                         userId,
-                        userName: rows[0].name,
+                        userName: res.rows[0].name,
                         prize: wonPrize.label,
                         time: timeString
                     };
                     historyLog.unshift(winRecord);
 
-                    // Winner အသစ်တိုးလာပါက Admin ရော Client ပါ တပြိုင်နက် Update ဖြစ်အောင် broadcast လုပ်ပေးခြင်း
                     broadcast({
                         type: 'SPIN_COMPLETE',
                         wonPrize,
                         prizes,
                         userId,
-                        userName: rows[0].name,
+                        userName: res.rows[0].name,
                         winRecord,
                         winners: historyLog
                     });
@@ -222,7 +209,7 @@ wss.on('connection', async (ws) => {
             }
 
             if (data.type === 'RESET_SPUN_USERS') {
-                await db.query('UPDATE users SET has_spun = 0, won_prize = NULL, spun_at = NULL');
+                await pool.query('UPDATE users SET has_spun = 0, won_prize = NULL, spun_at = NULL');
                 historyLog = [];
                 broadcast({ 
                     type: 'SYSTEM_MESSAGE', 

@@ -212,18 +212,24 @@
             `).join('');
         }
 
-        function renderWinnerList(winners) {
-            if (!winners || winners.length === 0) {
-                winnerHistory.innerHTML = '<p style="color: #64748b; font-size: 0.85rem;">No winners yet...</p>';
-                return;
-            }
+       function renderWinnerList(winners) {
+    if (!winners || winners.length === 0) {
+        winnerHistory.innerHTML = '<p style="color: #64748b; font-size: 0.85rem;">No winners yet...</p>';
+        return;
+    }
 
-            winnerHistory.innerHTML = winners.map(w => `
-                <div class="winner-item">
+    winnerHistory.innerHTML = winners.map(w => {
+        // Name, User ID နှင့် Prize အမည်များ သေချာစေရန် fallback လုပ်ထားခြင်း
+        const userName = w.name || w.userName || w.username || 'User';
+        const prizeName = w.won_prize || w.prize || w.prizeName || 'Prize';
+
+        return `
+            <div class="winner-item">
                 🏆 <strong>${userName}</strong> won <span style="color: #38bdf8; font-weight: bold;">${prizeName}</span>
             </div>
-            `).join('');
-        }
+        `;
+    }).join('');
+}
        // ✅ (undefined) ကို ဖြုတ်ထားသော ပြင်ဆင်ပြီး Code
 
         function removePrize(index) {

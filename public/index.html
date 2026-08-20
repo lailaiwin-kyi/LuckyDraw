@@ -91,7 +91,7 @@
             width: 100%;
         }
 
-        /* Enhanced Attractive Status/Winner Message Styling */
+        /* Message Box Styling */
         .status-text {
             font-size: 1.15rem;
             font-weight: 800;
@@ -259,11 +259,9 @@
         let loggedInUserName = null;
         let currentRotation = 0;
 
-        // Sync won status based strictly on prize quantity being 0
         function syncWonPrizes() {
             if (!prizes) return;
             prizes.forEach(prize => {
-                // Highlight/disable slice ONLY when remaining quantity reaches 0
                 if (prize.quantity !== undefined && prize.quantity <= 0) {
                     prize.disabled = true;
                 } else if (prize.quantity !== undefined && prize.quantity > 0) {
@@ -289,7 +287,6 @@
 
             for (let i = 0; i < numPrizes; i++) {
                 const angle = i * arcSize;
-                // Only treat as disabled if quantity is zero
                 const isOutOfStock = prizes[i].quantity <= 0 || prizes[i].disabled;
 
                 ctx.beginPath();
@@ -299,7 +296,6 @@
                 ctx.lineTo(0, 0);
                 ctx.fill();
 
-                // Draw Text
                 ctx.save();
                 ctx.rotate(angle + arcSize / 2);
                 ctx.textAlign = "right";
@@ -323,7 +319,6 @@
             modalWinnerList.innerHTML = listHTML || '<li>No winners yet!</li>';
         }
 
-        // Modal Handlers
         viewWinnerBtn.addEventListener('click', () => {
             winnerModal.style.display = 'flex';
         });
@@ -332,7 +327,6 @@
             winnerModal.style.display = 'none';
         });
 
-        // WebSocket Event Listeners
         ws.onopen = () => {
             statusText.textContent = "Connected. Please log in.";
             statusText.classList.remove('winner-highlight');
@@ -354,12 +348,19 @@
                     loggedInUserName = data.userName;
                     loginModal.style.display = 'none';
                     userInfo.textContent = `👤 ${loggedInUserName} (${loggedInUserId})`;
-                    statusText.textContent = "Ready to spin!";
-                    statusText.classList.remove('winner-highlight');
                     
+                    // Check if current user has already won
+                    const myWinRecord = historyLog.find(r => (r.userId || r.user_id) === loggedInUserId);
+                    if (myWinRecord) {
+                        statusText.textContent = `🎉 Congratulations! You won ${myWinRecord.prize || myWinRecord.won_prize}!`;
+                        statusText.classList.add('winner-highlight');
+                    } else {
+                        statusText.textContent = "Ready to spin!";
+                        statusText.classList.remove('winner-highlight');
+                    }
+
                     const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
-                    const alreadyWon = historyLog.some(r => (r.userId || r.user_id) === loggedInUserId);
-                    spinBtn.disabled = data.isSpinning || alreadyWon || availablePrizes.length === 0;
+                    spinBtn.disabled = data.isSpinning || !!myWinRecord || availablePrizes.length === 0;
                 } else {
                     loginError.style.display = 'block';
                     loginError.innerHTML = `⚠️ <strong>Error:</strong> ${data.error.toUpperCase()}`;
@@ -370,15 +371,14 @@
             }
             else if (data.type === 'START_SPIN') {
                 spinBtn.disabled = true;
-                statusText.classList.remove('winner-highlight');
-                statusText.textContent = `${data.userName} is spinning...`;
-
+                if (data.userId === loggedInUserId) {
+                    statusText.classList.remove('winner-highlight');
+                    statusText.textContent = "Spinning the wheel...";
+                }
+                
                 const totalPrizes = prizes.length;
                 const arcSize = (2 * Math.PI) / totalPrizes;
-                
-                // Canvas Coordinate Fix: Top Pointer is at -90 degrees (-Math.PI / 2)
                 const targetAngle = (1.5 * Math.PI) - (data.winningIndex * arcSize) - (arcSize / 2);
-                
                 const extraRounds = 5 * (2 * Math.PI);
                 const finalRotation = extraRounds + targetAngle;
 
@@ -406,15 +406,16 @@
                 drawWheel();
                 updateHistoryUI();
 
+                // ONLY UPDATE STATUS TEXT IF IT IS THE CURRENT LOGGED-IN USER
                 if (data.userId === loggedInUserId) {
-                    statusText.textContent = `🎉 Congratulations! You won ${data.wonPrize.label}!`;
+                    statusText.textContent = `🎉 Congratulations! You won ${data.wonPrize.label || data.wonPrize}!`;
                     statusText.classList.add('winner-highlight');
                     spinBtn.disabled = true;
                 } else {
-                    statusText.textContent = `🎉 ${data.userName} won ${data.wonPrize.label}!`;
-                    statusText.classList.add('winner-highlight');
+                    // Do not replace status text for other users' wins
                     const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
-                    if (loggedInUserId && !historyLog.some(r => (r.userId || r.user_id) === loggedInUserId) && availablePrizes.length > 0) {
+                    const myWinRecord = historyLog.find(r => (r.userId || r.user_id) === loggedInUserId);
+                    if (loggedInUserId && !myWinRecord && availablePrizes.length > 0) {
                         spinBtn.disabled = false;
                     }
                 }
@@ -434,14 +435,12 @@
             }
         };
 
-        // User Login Action
         loginBtn.addEventListener('click', () => {
             const userId = userIdInput.value.trim();
             if (!userId) return;
             ws.send(JSON.stringify({ type: 'LOGIN_USER', userId }));
         });
 
-        // Spin Action
         spinBtn.addEventListener('click', () => {
             if (!loggedInUserId) return;
             ws.send(JSON.stringify({ type: 'REQUEST_SPIN', userId: loggedInUserId }));

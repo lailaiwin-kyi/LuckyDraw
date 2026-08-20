@@ -79,6 +79,17 @@
             background: #64748b;
             cursor: not-allowed;
         }
+        .action-btn {
+            background: #0ea5e9;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+        }
         .status-text {
             font-size: 1rem;
             color: #94a3b8;
@@ -146,13 +157,14 @@
         }
         .history-list {
             list-style: none;
-            max-height: 120px;
+            max-height: 200px;
             overflow-y: auto;
             font-size: 0.9rem;
             color: #94a3b8;
+            text-align: left;
         }
         .history-list li {
-            padding: 5px 0;
+            padding: 8px 0;
             border-bottom: 1px solid #334155;
         }
         @keyframes shake {
@@ -178,6 +190,17 @@
         </div>
     </div>
 
+    <!-- Winners List Modal -->
+    <div class="modal-overlay" id="winnerModal" style="display: none;">
+        <div class="modal-card" style="max-width: 450px;">
+            <h2>🏆 Winner List</h2>
+            <div style="margin: 15px 0;">
+                <ul class="history-list" id="modalWinnerList"></ul>
+            </div>
+            <button id="closeWinnerBtn" style="background: #ef4444;">Close</button>
+        </div>
+    </div>
+
     <div class="container">
         <div class="user-info" id="userInfo">Not Logged In</div>
 
@@ -187,6 +210,8 @@
         </div>
 
         <button class="spin-btn" id="spinBtn" disabled>SPIN THE WHEEL</button>
+        <button class="action-btn" id="viewWinnerBtn">🏆 View Winner List</button>
+        
         <div class="status-text" id="statusText">Connecting to server...</div>
 
         <div class="history-card">
@@ -211,6 +236,11 @@
         const loginError = document.getElementById('loginError');
         const historyList = document.getElementById('historyList');
 
+        const winnerModal = document.getElementById('winnerModal');
+        const viewWinnerBtn = document.getElementById('viewWinnerBtn');
+        const closeWinnerBtn = document.getElementById('closeWinnerBtn');
+        const modalWinnerList = document.getElementById('modalWinnerList');
+
         let prizes = [];
         let historyLog = [];
         let loggedInUserId = null;
@@ -234,8 +264,10 @@
 
             for (let i = 0; i < numPrizes; i++) {
                 const angle = i * arcSize;
+                const isWon = prizes[i].disabled || false;
+
                 ctx.beginPath();
-                ctx.fillStyle = prizes[i].color || (i % 2 === 0 ? "#0a4d70" : "#a11c47");
+                ctx.fillStyle = isWon ? "#334155" : (prizes[i].color || (i % 2 === 0 ? "#0a4d70" : "#a11c47"));
                 ctx.moveTo(0, 0);
                 ctx.arc(0, 0, radius, angle, angle + arcSize);
                 ctx.lineTo(0, 0);
@@ -245,9 +277,12 @@
                 ctx.save();
                 ctx.rotate(angle + arcSize / 2);
                 ctx.textAlign = "right";
-                ctx.fillStyle = "#ffffff";
+                ctx.fillStyle = isWon ? "#64748b" : "#ffffff";
                 ctx.font = "bold 14px Segoe UI";
-                ctx.fillText(prizes[i].label, radius - 20, 5);
+                
+                let labelText = prizes[i].label;
+                if (isWon) labelText += " (WON)";
+                ctx.fillText(labelText, radius - 20, 5);
                 ctx.restore();
             }
 
@@ -255,10 +290,22 @@
         }
 
         function updateHistoryUI() {
-            historyList.innerHTML = historyLog.map(record => 
+            const listHTML = historyLog.map(record => 
                 `<li><strong>${record.userName}</strong> won <strong>${record.prize}</strong> at ${record.time}</li>`
             ).join('');
+
+            historyList.innerHTML = listHTML;
+            modalWinnerList.innerHTML = listHTML || '<li>No winners yet!</li>';
         }
+
+        // Modal Handlers
+        viewWinnerBtn.addEventListener('click', () => {
+            winnerModal.style.display = 'flex';
+        });
+
+        closeWinnerBtn.addEventListener('click', () => {
+            winnerModal.style.display = 'none';
+        });
 
         // WebSocket Event Listeners
         ws.onopen = () => {
@@ -282,8 +329,9 @@
                     userInfo.textContent = `👤 ${loggedInUserName} (${loggedInUserId})`;
                     statusText.textContent = "Ready to spin!";
                     
+                    const availablePrizes = prizes.filter(p => !p.disabled);
                     const alreadyWon = historyLog.some(r => r.userId === loggedInUserId);
-                    spinBtn.disabled = data.isSpinning || alreadyWon || prizes.length === 0;
+                    spinBtn.disabled = data.isSpinning || alreadyWon || availablePrizes.length === 0;
                 } else {
                     loginError.style.display = 'block';
                     loginError.innerHTML = `⚠️ <strong>Error:</strong> ${data.error.toUpperCase()}`;
@@ -331,7 +379,8 @@
                     spinBtn.disabled = true;
                 } else {
                     statusText.textContent = `🎉 ${data.userName} won ${data.wonPrize.label}!`;
-                    if (loggedInUserId && !historyLog.some(r => r.userId === loggedInUserId)) {
+                    const availablePrizes = prizes.filter(p => !p.disabled);
+                    if (loggedInUserId && !historyLog.some(r => r.userId === loggedInUserId) && availablePrizes.length > 0) {
                         spinBtn.disabled = false;
                     }
                 }

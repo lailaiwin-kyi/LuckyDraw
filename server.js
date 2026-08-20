@@ -110,17 +110,17 @@ initDatabase();
 
 // Default Prize List
 const defaultPrizes = [
-    { label: "Prize 1", color: "#0a4d70" },
-    { label: "Prize 2", color: "#a11c47" },
-    { label: "Prize 3", color: "#0a4d70" },
-    { label: "Prize 4", color: "#a11c47" },
-    { label: "Prize 5", color: "#0a4d70" },
-    { label: "Prize 6", color: "#a11c47" },
-    { label: "Prize 7", color: "#0a4d70" },
-    { label: "Prize 8", color: "#a11c47" }
+    { label: "Prize 1", color: "#0a4d70", disabled: false },
+    { label: "Prize 2", color: "#a11c47", disabled: false },
+    { label: "Prize 3", color: "#0a4d70", disabled: false },
+    { label: "Prize 4", color: "#a11c47", disabled: false },
+    { label: "Prize 5", color: "#0a4d70", disabled: false },
+    { label: "Prize 6", color: "#a11c47", disabled: false },
+    { label: "Prize 7", color: "#0a4d70", disabled: false },
+    { label: "Prize 8", color: "#a11c47", disabled: false }
 ];
 
-let prizes = [...defaultPrizes];
+let prizes = defaultPrizes.map(p => ({ ...p }));
 let isSpinning = false;
 let historyLog = [];
 
@@ -170,7 +170,9 @@ wss.on('connection', async (ws) => {
             }
 
             // 2. Spin Request
-            if (data.type === 'REQUEST_SPIN' && !isSpinning && prizes.length > 0) {
+            const availableIndices = prizes.map((p, index) => p.disabled ? null : index).filter(i => i !== null);
+
+            if (data.type === 'REQUEST_SPIN' && !isSpinning && availableIndices.length > 0) {
                 const userId = data.userId;
                 const res = await pool.query('SELECT * FROM users WHERE user_id = $1', [userId]);
 
@@ -187,7 +189,8 @@ wss.on('connection', async (ws) => {
                 await pool.query('UPDATE users SET has_spun = 1 WHERE user_id = $1', [userId]);
                 isSpinning = true;
 
-                const winningIndex = Math.floor(Math.random() * prizes.length);
+                // Pick randomly from non-disabled prizes
+                const winningIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
                 const extraDegrees = Math.floor(Math.random() * 360);
                 
                 broadcast({
@@ -200,7 +203,7 @@ wss.on('connection', async (ws) => {
 
                 setTimeout(async () => {
                     const wonPrize = prizes[winningIndex];
-                    prizes.splice(winningIndex, 1);
+                    prizes[winningIndex].disabled = true; // Disable instead of splice
                     isSpinning = false;
 
                     const timeString = new Date().toLocaleTimeString();
@@ -242,7 +245,7 @@ wss.on('connection', async (ws) => {
 
             // 3. Admin Wheel Actions
             if (data.type === 'ADD_PRIZE' && !isSpinning) {
-                prizes.push(data.prize);
+                prizes.push({ ...data.prize, disabled: false });
                 broadcast({ type: 'UPDATE_PRIZES', prizes });
             }
 
@@ -252,12 +255,13 @@ wss.on('connection', async (ws) => {
             }
 
             if (data.type === 'RESET_PRIZES' && !isSpinning) {
-                prizes = [...defaultPrizes];
+                prizes = defaultPrizes.map(p => ({ ...p }));
                 broadcast({ type: 'UPDATE_PRIZES', prizes });
             }
 
             if (data.type === 'RESET_SPUN_USERS') {
                 await pool.query('UPDATE users SET has_spun = 0, won_prize = NULL, spun_at = NULL');
+                prizes = prizes.map(p => ({ ...p, disabled: false }));
                 historyLog = [];
                 broadcast({ 
                     type: 'SYSTEM_MESSAGE', 

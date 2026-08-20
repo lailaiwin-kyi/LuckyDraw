@@ -90,11 +90,41 @@
             cursor: pointer;
             width: 100%;
         }
+
+        /* Enhanced Attractive Status/Winner Message Styling */
         .status-text {
-            font-size: 1rem;
-            color: #94a3b8;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #38bdf8;
             min-height: 24px;
+            text-align: center;
+            padding: 12px 24px;
+            border-radius: 50px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.25);
+            transition: all 0.3s ease-in-out;
+            letter-spacing: 0.5px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+        .status-text.winner-highlight {
+            background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+            border: 2px solid #22c55e;
+            color: #4ade80;
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.4);
+            animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-size: 1.25rem;
+        }
+
+        @keyframes bounceIn {
+            0% { opacity: 0; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -229,13 +259,15 @@
         let loggedInUserName = null;
         let currentRotation = 0;
 
-        // Sync history records to mark won prizes in UI
+        // Sync won status based strictly on prize quantity being 0
         function syncWonPrizes() {
-            if (!prizes || !historyLog) return;
-            const wonPrizeNames = historyLog.map(h => h.prize || h.won_prize || h.prizeName);
+            if (!prizes) return;
             prizes.forEach(prize => {
-                if (wonPrizeNames.includes(prize.label)) {
+                // Highlight/disable slice ONLY when remaining quantity reaches 0
+                if (prize.quantity !== undefined && prize.quantity <= 0) {
                     prize.disabled = true;
+                } else if (prize.quantity !== undefined && prize.quantity > 0) {
+                    prize.disabled = false;
                 }
             });
         }
@@ -257,10 +289,11 @@
 
             for (let i = 0; i < numPrizes; i++) {
                 const angle = i * arcSize;
-                const isWon = prizes[i].disabled || false;
+                // Only treat as disabled if quantity is zero
+                const isOutOfStock = prizes[i].quantity <= 0 || prizes[i].disabled;
 
                 ctx.beginPath();
-                ctx.fillStyle = isWon ? "#334155" : (prizes[i].color || (i % 2 === 0 ? "#0a4d70" : "#a11c47"));
+                ctx.fillStyle = isOutOfStock ? "#334155" : (prizes[i].color || (i % 2 === 0 ? "#0a4d70" : "#a11c47"));
                 ctx.moveTo(0, 0);
                 ctx.arc(0, 0, radius, angle, angle + arcSize);
                 ctx.lineTo(0, 0);
@@ -270,11 +303,11 @@
                 ctx.save();
                 ctx.rotate(angle + arcSize / 2);
                 ctx.textAlign = "right";
-                ctx.fillStyle = isWon ? "#64748b" : "#ffffff";
+                ctx.fillStyle = isOutOfStock ? "#64748b" : "#ffffff";
                 ctx.font = "bold 14px Segoe UI";
                 
                 let labelText = prizes[i].label;
-                if (isWon) labelText += " (WON)";
+                if (isOutOfStock) labelText += " (WON)";
                 ctx.fillText(labelText, radius - 20, 5);
                 ctx.restore();
             }
@@ -302,6 +335,7 @@
         // WebSocket Event Listeners
         ws.onopen = () => {
             statusText.textContent = "Connected. Please log in.";
+            statusText.classList.remove('winner-highlight');
         };
 
         ws.onmessage = (event) => {
@@ -321,8 +355,9 @@
                     loginModal.style.display = 'none';
                     userInfo.textContent = `👤 ${loggedInUserName} (${loggedInUserId})`;
                     statusText.textContent = "Ready to spin!";
+                    statusText.classList.remove('winner-highlight');
                     
-                    const availablePrizes = prizes.filter(p => !p.disabled);
+                    const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
                     const alreadyWon = historyLog.some(r => (r.userId || r.user_id) === loggedInUserId);
                     spinBtn.disabled = data.isSpinning || alreadyWon || availablePrizes.length === 0;
                 } else {
@@ -335,6 +370,7 @@
             }
             else if (data.type === 'START_SPIN') {
                 spinBtn.disabled = true;
+                statusText.classList.remove('winner-highlight');
                 statusText.textContent = `${data.userName} is spinning...`;
 
                 const totalPrizes = prizes.length;
@@ -372,10 +408,12 @@
 
                 if (data.userId === loggedInUserId) {
                     statusText.textContent = `🎉 Congratulations! You won ${data.wonPrize.label}!`;
+                    statusText.classList.add('winner-highlight');
                     spinBtn.disabled = true;
                 } else {
                     statusText.textContent = `🎉 ${data.userName} won ${data.wonPrize.label}!`;
-                    const availablePrizes = prizes.filter(p => !p.disabled);
+                    statusText.classList.add('winner-highlight');
+                    const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
                     if (loggedInUserId && !historyLog.some(r => (r.userId || r.user_id) === loggedInUserId) && availablePrizes.length > 0) {
                         spinBtn.disabled = false;
                     }

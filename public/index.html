@@ -143,21 +143,9 @@
             display: none;
             margin-top: 10px;
         }
-        .history-card {
-            background: #1e293b;
-            padding: 15px;
-            border-radius: 8px;
-            width: 100%;
-            border: 1px solid #334155;
-        }
-        .history-card h3 {
-            margin-bottom: 10px;
-            font-size: 1rem;
-            color: #cbd5e1;
-        }
         .history-list {
             list-style: none;
-            max-height: 200px;
+            max-height: 250px;
             overflow-y: auto;
             font-size: 0.9rem;
             color: #94a3b8;
@@ -213,11 +201,6 @@
         <button class="action-btn" id="viewWinnerBtn">🏆 View Winner List</button>
         
         <div class="status-text" id="statusText">Connecting to server...</div>
-
-        <div class="history-card">
-            <h3>Recent Winners</h3>
-            <ul class="history-list" id="historyList"></ul>
-        </div>
     </div>
 
     <script>
@@ -234,7 +217,6 @@
         const userIdInput = document.getElementById('userIdInput');
         const loginBtn = document.getElementById('loginBtn');
         const loginError = document.getElementById('loginError');
-        const historyList = document.getElementById('historyList');
 
         const winnerModal = document.getElementById('winnerModal');
         const viewWinnerBtn = document.getElementById('viewWinnerBtn');
@@ -294,7 +276,6 @@
                 `<li><strong>${record.userName}</strong> won <strong>${record.prize}</strong> at ${record.time}</li>`
             ).join('');
 
-            historyList.innerHTML = listHTML;
             modalWinnerList.innerHTML = listHTML || '<li>No winners yet!</li>';
         }
 

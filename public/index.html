@@ -90,8 +90,6 @@
             cursor: pointer;
             width: 100%;
         }
-
-        /* Message Box Styling */
         .status-text {
             font-size: 1.15rem;
             font-weight: 800;
@@ -118,13 +116,11 @@
             animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             font-size: 1.25rem;
         }
-
         @keyframes bounceIn {
             0% { opacity: 0; transform: scale(0.8); }
             50% { opacity: 1; transform: scale(1.05); }
             100% { transform: scale(1); }
         }
-
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -197,7 +193,6 @@
 </head>
 <body>
 
-    <!-- Login Modal -->
     <div class="modal-overlay" id="loginModal">
         <div class="modal-card" id="loginCard">
             <h2>Welcome to Lucky Draw</h2>
@@ -208,7 +203,6 @@
         </div>
     </div>
 
-    <!-- Winners List Modal -->
     <div class="modal-overlay" id="winnerModal" style="display: none;">
         <div class="modal-card" style="max-width: 450px;">
             <h2>🏆 Winner List</h2>
@@ -268,6 +262,17 @@
                     prize.disabled = false;
                 }
             });
+        }
+
+        // Pointer ကို မိမိရရှိထားသော ဆုနေရာသို့ အတိအကျ ရွှေ့ပေးသည့် Function
+        function setRotationToPrize(prizeLabel) {
+            if (!prizes || prizes.length === 0) return;
+            const index = prizes.findIndex(p => p.label === prizeLabel);
+            if (index !== -1) {
+                const totalPrizes = prizes.length;
+                const arcSize = (2 * Math.PI) / totalPrizes;
+                currentRotation = (1.5 * Math.PI) - (index * arcSize) - (arcSize / 2);
+            }
         }
 
         function drawWheel() {
@@ -349,11 +354,12 @@
                     loginModal.style.display = 'none';
                     userInfo.textContent = `👤 ${loggedInUserName} (${loggedInUserId})`;
                     
-                    // Check if current user has already won
                     const myWinRecord = historyLog.find(r => (r.userId || r.user_id) === loggedInUserId);
                     if (myWinRecord) {
-                        statusText.textContent = `🎉 Congratulations! You won ${myWinRecord.prize || myWinRecord.won_prize}!`;
+                        const prizeName = myWinRecord.prize || myWinRecord.won_prize;
+                        statusText.textContent = `🎉 Congratulations! You won ${prizeName}!`;
                         statusText.classList.add('winner-highlight');
+                        setRotationToPrize(prizeName);
                     } else {
                         statusText.textContent = "Ready to spin!";
                         statusText.classList.remove('winner-highlight');
@@ -361,6 +367,7 @@
 
                     const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
                     spinBtn.disabled = data.isSpinning || !!myWinRecord || availablePrizes.length === 0;
+                    drawWheel();
                 } else {
                     loginError.style.display = 'block';
                     loginError.innerHTML = `⚠️ <strong>Error:</strong> ${data.error.toUpperCase()}`;
@@ -370,12 +377,13 @@
                 }
             }
             else if (data.type === 'START_SPIN') {
+                // မိမိ မဟုတ်ပါက Spin Animation မပြရန် Ignore လုပ်ပါမည်
+                if (data.userId !== loggedInUserId) return;
+
                 spinBtn.disabled = true;
-                if (data.userId === loggedInUserId) {
-                    statusText.classList.remove('winner-highlight');
-                    statusText.textContent = "Spinning the wheel...";
-                }
-                
+                statusText.classList.remove('winner-highlight');
+                statusText.textContent = "Spinning the wheel...";
+
                 const totalPrizes = prizes.length;
                 const arcSize = (2 * Math.PI) / totalPrizes;
                 const targetAngle = (1.5 * Math.PI) - (data.winningIndex * arcSize) - (arcSize / 2);
@@ -403,22 +411,27 @@
                 prizes = data.prizes;
                 historyLog.unshift(data.winRecord);
                 syncWonPrizes();
-                drawWheel();
                 updateHistoryUI();
 
-                // ONLY UPDATE STATUS TEXT IF IT IS THE CURRENT LOGGED-IN USER
+                // မိမိ မဲလှည့်မှု ပြီးဆုံးပါက မိမိ၏ ဆုနေရာသို့ Pointer ထားရှိမည်
                 if (data.userId === loggedInUserId) {
                     statusText.textContent = `🎉 Congratulations! You won ${data.wonPrize.label || data.wonPrize}!`;
                     statusText.classList.add('winner-highlight');
                     spinBtn.disabled = true;
+                    setRotationToPrize(data.wonPrize.label || data.wonPrize);
                 } else {
-                    // Do not replace status text for other users' wins
-                    const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
+                    // အခြားသူ မဲပေါက်ပါက မိမိ ပေါက်ထားသော ဆုနေရာကိုသာ ဆက်လက် ညွှန်ပြထားမည်
                     const myWinRecord = historyLog.find(r => (r.userId || r.user_id) === loggedInUserId);
+                    if (myWinRecord) {
+                        setRotationToPrize(myWinRecord.prize || myWinRecord.won_prize);
+                    }
+                    
+                    const availablePrizes = prizes.filter(p => !p.disabled && p.quantity > 0);
                     if (loggedInUserId && !myWinRecord && availablePrizes.length > 0) {
                         spinBtn.disabled = false;
                     }
                 }
+                drawWheel();
             }
             else if (data.type === 'UPDATE_PRIZES') {
                 prizes = data.prizes;

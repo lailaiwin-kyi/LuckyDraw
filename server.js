@@ -250,13 +250,14 @@ wss.on('connection', async (ws) => {
                 const winningIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
                 const extraDegrees = Math.floor(Math.random() * 360);
                 
-                broadcast({
+                // START_SPIN ကို broadcast မလုပ်တော့ဘဲ မဲလှည့်သော User ထံသို့သာ တိုက်ရိုက် ပို့ပါမည်
+                ws.send(JSON.stringify({
                     type: 'START_SPIN',
                     winningIndex,
                     extraDegrees,
                     userId,
                     userName: res.rows[0].name
-                });
+                }));
 
                 setTimeout(async () => {
                     const wonPrize = prizes[winningIndex];
@@ -299,6 +300,7 @@ wss.on('connection', async (ws) => {
                         time: timeString
                     };
 
+                    // SPIN_COMPLETE ကိုမူ Data Sync ဖြစ်ရန် Broadcast ဆက်လက်လုပ်ဆောင်ပါမည်
                     broadcast({
                         type: 'SPIN_COMPLETE',
                         wonPrize,

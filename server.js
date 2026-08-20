@@ -39,29 +39,40 @@ async function getAllUsersFromDB() {
     }
 }
 
-// Helper Function: Fetch winners list
+// Helper Function: Fetch winners list from winners table
 async function getWinnersFromDB() {
     try {
         const res = await pool.query(`
             SELECT 
-                user_id AS "userId",
-                user_id AS "userid",
-                user_id AS "id",
-                user_id AS "user_id",
-                name AS "userName",
-                name AS "username",
-                name AS "name",
-                won_prize AS "prize", 
-                won_prize AS "won_prize", 
-                won_prize AS "prizeName",
-                TO_CHAR(spun_at, 'HH12:MI:SS AM') AS "time" 
-            FROM users 
-            WHERE has_spun = 1 AND won_prize IS NOT NULL 
-            ORDER BY spun_at DESC
+                w.user_id AS "userId",
+                w.user_id AS "userid",
+                w.user_id AS "id",
+                w.user_id AS "user_id",
+                u.name AS "userName",
+                u.name AS "username",
+                u.name AS "name",
+                w.prize_name AS "prize", 
+                w.prize_name AS "won_prize", 
+                w.prize_name AS "prizeName",
+                TO_CHAR(w.won_at, 'HH12:MI:SS AM') AS "time" 
+            FROM winners w
+            JOIN users u ON w.user_id = u.user_id
+            ORDER BY w.won_at DESC
         `);
         return res.rows;
     } catch (err) {
         console.error('Error fetching winners:', err.message);
+        return [];
+    }
+}
+
+// Helper Function: Fetch all prizes from Database
+async function getPrizesFromDB() {
+    try {
+        const res = await pool.query('SELECT id, label, color, disabled, quantity, initial_quantity FROM prizes ORDER BY id ASC');
+        return res.rows;
+    } catch (err) {
+        console.error('Error fetching prizes:', err.message);
         return [];
     }
 }
@@ -74,9 +85,26 @@ async function broadcastUserData() {
     broadcast({ type: 'UPDATE_WINNERS', historyLog: winners, winners });
 }
 
-// Initialize Database Table
+// Default Prize List (With Quantity)
+const defaultPrizes = [
+    { label: "Prize 1", color: "#0a4d70", disabled: false, quantity: 8, initial_quantity: 8 },
+    { label: "Prize 2", color: "#a11c47", disabled: false, quantity: 5, initial_quantity: 5 },
+    { label: "Prize 3", color: "#0a4d70", disabled: false, quantity: 5, initial_quantity: 5 },
+    { label: "Prize 4", color: "#a11c47", disabled: false, quantity: 3, initial_quantity: 3 },
+    { label: "Prize 5", color: "#0a4d70", disabled: false, quantity: 3, initial_quantity: 3 },
+    { label: "Prize 6", color: "#a11c47", disabled: false, quantity: 2, initial_quantity: 2 },
+    { label: "Prize 7", color: "#0a4d70", disabled: false, quantity: 2, initial_quantity: 2 },
+    { label: "Prize 8", color: "#a11c47", disabled: false, quantity: 1, initial_quantity: 1 }
+];
+
+let prizes = [];
+let isSpinning = false;
+let historyLog = [];
+
+// Initialize Database Tables
 async function initDatabase() {
     try {
+        // 1. Users Table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 user_id VARCHAR(50) PRIMARY KEY,
@@ -87,8 +115,33 @@ async function initDatabase() {
             )
         `);
 
-        const countRes = await pool.query('SELECT COUNT(*) as count FROM users');
-        if (parseInt(countRes.rows[0].count) === 0) {
+        // 2. Prizes Table (added quantity)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS prizes (
+                id SERIAL PRIMARY KEY,
+                label VARCHAR(100) NOT NULL,
+                color VARCHAR(20) DEFAULT '#0a4d70',
+                disabled BOOLEAN DEFAULT FALSE,
+                quantity INT DEFAULT 1,
+                initial_quantity INT DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // 3. Winners Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS winners (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(50) REFERENCES users(user_id) ON DELETE CASCADE,
+                prize_id INT REFERENCES prizes(id) ON DELETE SET NULL,
+                prize_name VARCHAR(100) NOT NULL,
+                won_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Insert Default Users
+        const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
+        if (parseInt(userCount.rows[0].count) === 0) {
             await pool.query(`
                 INSERT INTO users (user_id, name) VALUES 
                 ('ID001', 'Alice'),
@@ -97,9 +150,22 @@ async function initDatabase() {
                 ('ID004', 'David'),
                 ('ID005', 'Emma')
             `);
-            console.log('✅ Default users inserted into PostgreSQL.');
+            console.log('✅ Default users inserted.');
         }
 
+        // Insert Default Prizes
+        const prizeCount = await pool.query('SELECT COUNT(*) as count FROM prizes');
+        if (parseInt(prizeCount.rows[0].count) === 0) {
+            for (const prize of defaultPrizes) {
+                await pool.query(
+                    'INSERT INTO prizes (label, color, disabled, quantity, initial_quantity) VALUES ($1, $2, $3, $4, $5)', 
+                    [prize.label, prize.color, prize.disabled, prize.quantity, prize.initial_quantity]
+                );
+            }
+            console.log('✅ Default prizes inserted.');
+        }
+
+        prizes = await getPrizesFromDB();
         historyLog = await getWinnersFromDB();
         console.log('✅ Connected to PostgreSQL Database successfully.');
     } catch (err) {
@@ -107,22 +173,6 @@ async function initDatabase() {
     }
 }
 initDatabase();
-
-// Default Prize List
-const defaultPrizes = [
-    { label: "Prize 1", color: "#0a4d70", disabled: false },
-    { label: "Prize 2", color: "#a11c47", disabled: false },
-    { label: "Prize 3", color: "#0a4d70", disabled: false },
-    { label: "Prize 4", color: "#a11c47", disabled: false },
-    { label: "Prize 5", color: "#0a4d70", disabled: false },
-    { label: "Prize 6", color: "#a11c47", disabled: false },
-    { label: "Prize 7", color: "#0a4d70", disabled: false },
-    { label: "Prize 8", color: "#a11c47", disabled: false }
-];
-
-let prizes = defaultPrizes.map(p => ({ ...p }));
-let isSpinning = false;
-let historyLog = [];
 
 function broadcast(data) {
     const message = JSON.stringify(data);
@@ -136,6 +186,7 @@ function broadcast(data) {
 wss.on('connection', async (ws) => {
     historyLog = await getWinnersFromDB();
     const usersList = await getAllUsersFromDB();
+    prizes = await getPrizesFromDB();
 
     ws.send(JSON.stringify({ 
         type: 'INIT', 
@@ -170,7 +221,9 @@ wss.on('connection', async (ws) => {
             }
 
             // 2. Spin Request
-            const availableIndices = prizes.map((p, index) => p.disabled ? null : index).filter(i => i !== null);
+            prizes = await getPrizesFromDB();
+            // Pick only prizes where disabled is false AND quantity > 0
+            const availableIndices = prizes.map((p, index) => (p.disabled || p.quantity <= 0) ? null : index).filter(i => i !== null);
 
             if (data.type === 'REQUEST_SPIN' && !isSpinning && availableIndices.length > 0) {
                 const userId = data.userId;
@@ -189,7 +242,6 @@ wss.on('connection', async (ws) => {
                 await pool.query('UPDATE users SET has_spun = 1 WHERE user_id = $1', [userId]);
                 isSpinning = true;
 
-                // Pick randomly from non-disabled prizes
                 const winningIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
                 const extraDegrees = Math.floor(Math.random() * 360);
                 
@@ -203,14 +255,30 @@ wss.on('connection', async (ws) => {
 
                 setTimeout(async () => {
                     const wonPrize = prizes[winningIndex];
-                    prizes[winningIndex].disabled = true; // Disable instead of splice
+                    
+                    // Deduct prize quantity by 1, and set disabled = TRUE if quantity reaches 0
+                    await pool.query(`
+                        UPDATE prizes 
+                        SET quantity = quantity - 1,
+                            disabled = CASE WHEN (quantity - 1) <= 0 THEN TRUE ELSE FALSE END
+                        WHERE id = $1
+                    `, [wonPrize.id]);
+
+                    prizes = await getPrizesFromDB();
                     isSpinning = false;
 
                     const timeString = new Date().toLocaleTimeString();
 
+                    // Update User Record
                     await pool.query(
                         'UPDATE users SET won_prize = $1, spun_at = NOW() WHERE user_id = $2',
                         [wonPrize.label, userId]
+                    );
+
+                    // Insert into Winners Table
+                    await pool.query(
+                        'INSERT INTO winners (user_id, prize_id, prize_name) VALUES ($1, $2, $3)',
+                        [userId, wonPrize.id, wonPrize.label]
                     );
 
                     historyLog = await getWinnersFromDB();
@@ -245,34 +313,54 @@ wss.on('connection', async (ws) => {
 
             // 3. Admin Wheel Actions
             if (data.type === 'ADD_PRIZE' && !isSpinning) {
-                prizes.push({ ...data.prize, disabled: false });
+                const { label, color, quantity } = data.prize;
+                const qty = parseInt(quantity) || 1;
+                await pool.query(
+                    'INSERT INTO prizes (label, color, disabled, quantity, initial_quantity) VALUES ($1, $2, FALSE, $3, $4)', 
+                    [label, color || '#0a4d70', qty, qty]
+                );
+                prizes = await getPrizesFromDB();
                 broadcast({ type: 'UPDATE_PRIZES', prizes });
             }
 
             if (data.type === 'REMOVE_PRIZE' && !isSpinning) {
-                prizes.splice(data.index, 1);
-                broadcast({ type: 'UPDATE_PRIZES', prizes });
+                const prizeToDelete = prizes[data.index];
+                if (prizeToDelete) {
+                    await pool.query('DELETE FROM prizes WHERE id = $1', [prizeToDelete.id]);
+                    prizes = await getPrizesFromDB();
+                    broadcast({ type: 'UPDATE_PRIZES', prizes });
+                }
             }
 
             if (data.type === 'RESET_PRIZES' && !isSpinning) {
-                prizes = defaultPrizes.map(p => ({ ...p }));
+                await pool.query('DELETE FROM prizes');
+                for (const prize of defaultPrizes) {
+                    await pool.query(
+                        'INSERT INTO prizes (label, color, disabled, quantity, initial_quantity) VALUES ($1, $2, $3, $4, $5)', 
+                        [prize.label, prize.color, prize.disabled, prize.quantity, prize.initial_quantity]
+                    );
+                }
+                prizes = await getPrizesFromDB();
                 broadcast({ type: 'UPDATE_PRIZES', prizes });
             }
 
             if (data.type === 'RESET_SPUN_USERS') {
                 await pool.query('UPDATE users SET has_spun = 0, won_prize = NULL, spun_at = NULL');
-                prizes = prizes.map(p => ({ ...p, disabled: false }));
+                await pool.query('DELETE FROM winners');
+                await pool.query('UPDATE prizes SET quantity = initial_quantity, disabled = FALSE');
+                prizes = await getPrizesFromDB();
                 historyLog = [];
                 broadcast({ 
                     type: 'SYSTEM_MESSAGE', 
-                    message: 'User spin limits reset by Admin!',
+                    message: 'User spin limits, winners history, and prize quantities reset by Admin!',
                     historyLog: [],
                     winners: [] 
                 });
+                broadcast({ type: 'UPDATE_PRIZES', prizes });
                 await broadcastUserData();
             }
 
-            // 4. USER CRUD OPERATIONS (Insert, Update, Delete)
+            // 4. USER CRUD OPERATIONS
             if (data.type === 'ADD_USER') {
                 const { userId, name } = data;
                 await pool.query('INSERT INTO users (user_id, name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING', [userId, name]);

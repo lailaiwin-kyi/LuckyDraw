@@ -102,6 +102,26 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: #0d1726;
+            margin-bottom: 6px;
+            border-radius: 6px;
+        }
+        .prize-actions, .user-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .prize-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .qty-badge {
+            background: #1e293b;
+            color: #38bdf8;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid #334155;
         }
         .user-item {
             display: flex;
@@ -112,10 +132,6 @@
             border-radius: 6px;
             margin-bottom: 8px;
             border-left: 3px solid #0ea5e9;
-        }
-        .user-actions {
-            display: flex;
-            gap: 6px;
         }
         .winner-item {
             padding: 12px;
@@ -142,6 +158,7 @@
             <h2>⚙️ Wheel Prize Manager</h2>
             <div class="form-group">
                 <input type="text" id="prizeLabel" placeholder="New Prize Name">
+                <input type="number" id="prizeQty" placeholder="Qty" value="1" min="1" style="width: 80px;">
                 <input type="color" id="prizeColor" value="#0a4d70" style="width: 50px; padding: 2px; cursor: pointer;">
                 <button id="addPrizeBtn">Add</button>
             </div>
@@ -187,6 +204,7 @@
         const ws = new WebSocket(`${protocol}//${location.host}`);
 
         const prizeLabel = document.getElementById('prizeLabel');
+        const prizeQty = document.getElementById('prizeQty');
         const prizeColor = document.getElementById('prizeColor');
         const addPrizeBtn = document.getElementById('addPrizeBtn');
         const prizeList = document.getElementById('prizeList');
@@ -202,10 +220,21 @@
         let prizes = [];
 
         function renderPrizeList() {
+            if (!prizes || prizes.length === 0) {
+                prizeList.innerHTML = '<p style="color: #64748b; font-size: 0.85rem;">No prizes found.</p>';
+                return;
+            }
+
             prizeList.innerHTML = prizes.map((prize, index) => `
                 <li>
-                    <span style="color: ${prize.color}; font-weight: 600;">■ ${prize.label}</span>
-                    <button class="danger" onclick="removePrize(${index})" style="padding: 4px 10px; font-size: 0.75rem;">Delete</button>
+                    <div class="prize-info">
+                        <span style="color: ${prize.color}; font-weight: 600;">■ ${prize.label}</span>
+                        <span class="qty-badge">Qty: ${prize.quantity}/${prize.initial_quantity}</span>
+                    </div>
+                    <div class="prize-actions">
+                        <button onclick="editPrize(${prize.id}, '${prize.label}', ${prize.initial_quantity})" style="padding: 4px 8px; font-size: 0.75rem;">Edit</button>
+                        <button class="danger" onclick="removePrize(${prize.id}, ${index})" style="padding: 4px 8px; font-size: 0.75rem;">Delete</button>
+                    </div>
                 </li>
             `).join('');
         }
@@ -248,8 +277,31 @@
             }).join('');
         }
 
-        function removePrize(index) {
-            ws.send(JSON.stringify({ type: 'REMOVE_PRIZE', index }));
+        // EDIT PRIZE - Updates label and initial_quantity only
+        function editPrize(id, currentLabel, currentInitialQty) {
+            const newLabel = prompt(`Edit Prize Name:`, currentLabel);
+            if (newLabel === null) return;
+
+            const newInitialQty = prompt(`Edit Initial Quantity:`, currentInitialQty);
+            if (newInitialQty === null) return;
+
+            const parsedQty = parseInt(newInitialQty);
+            if (newLabel.trim() !== '' && !isNaN(parsedQty) && parsedQty > 0) {
+                ws.send(JSON.stringify({
+                    type: 'UPDATE_PRIZE',
+                    id: id,
+                    label: newLabel.trim(),
+                    initial_quantity: parsedQty
+                }));
+            } else {
+                alert("Please provide valid inputs.");
+            }
+        }
+
+        function removePrize(id, index) {
+            if (confirm("Are you sure you want to delete this prize?")) {
+                ws.send(JSON.stringify({ type: 'DELETE_PRIZE', id, index }));
+            }
         }
 
         function editUser(userId, currentName) {
@@ -292,13 +344,22 @@
         addPrizeBtn.addEventListener('click', () => {
             const label = prizeLabel.value.trim();
             const color = prizeColor.value;
-            if (!label) return;
+            const initial_quantity = parseInt(prizeQty.value) || 1;
+
+            if (!label) {
+                alert("Please enter a prize name.");
+                return;
+            }
 
             ws.send(JSON.stringify({ 
                 type: 'ADD_PRIZE', 
-                prize: { label, color } 
+                label, 
+                color,
+                initial_quantity 
             }));
+
             prizeLabel.value = '';
+            prizeQty.value = '1';
         });
 
         addUserBtn.addEventListener('click', () => {

@@ -85,7 +85,13 @@ async function broadcastUserData() {
     broadcast({ type: 'UPDATE_WINNERS', historyLog: winners, winners });
 }
 
-// Default Prize List (With Quantity)
+// Broadcast Prize Updates
+async function broadcastPrizeData() {
+    prizes = await getPrizesFromDB();
+    broadcast({ type: 'UPDATE_PRIZES', prizes });
+}
+
+// Default Prize List
 const defaultPrizes = [
     { label: "Prize 1", color: "#0a4d70", disabled: false, quantity: 8, initial_quantity: 8 },
     { label: "Prize 2", color: "#a11c47", disabled: false, quantity: 5, initial_quantity: 5 },
@@ -104,7 +110,7 @@ let historyLog = [];
 // Initialize Database Tables
 async function initDatabase() {
     try {
-        // 1. Users Table
+        // 1. Create Users Table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
                 user_id VARCHAR(50) PRIMARY KEY,
@@ -115,7 +121,7 @@ async function initDatabase() {
             )
         `);
 
-        // 2. Prizes Table (added quantity)
+        // 2. Create Prizes Table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS prizes (
                 id SERIAL PRIMARY KEY,
@@ -128,7 +134,7 @@ async function initDatabase() {
             )
         `);
 
-        // 3. Winners Table
+        // 3. Create Winners Table
         await pool.query(`
             CREATE TABLE IF NOT EXISTS winners (
                 id SERIAL PRIMARY KEY,
@@ -139,7 +145,7 @@ async function initDatabase() {
             )
         `);
 
-        // Insert Default Users
+        // Insert Default Users if table is empty
         const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
         if (parseInt(userCount.rows[0].count) === 0) {
             await pool.query(`
@@ -153,7 +159,7 @@ async function initDatabase() {
             console.log('✅ Default users inserted.');
         }
 
-        // Insert Default Prizes
+        // Insert Default Prizes if table is empty
         const prizeCount = await pool.query('SELECT COUNT(*) as count FROM prizes');
         if (parseInt(prizeCount.rows[0].count) === 0) {
             for (const prize of defaultPrizes) {
@@ -222,7 +228,6 @@ wss.on('connection', async (ws) => {
 
             // 2. Spin Request
             prizes = await getPrizesFromDB();
-            // Pick only prizes where disabled is false AND quantity > 0
             const availableIndices = prizes.map((p, index) => (p.disabled || p.quantity <= 0) ? null : index).filter(i => i !== null);
 
             if (data.type === 'REQUEST_SPIN' && !isSpinning && availableIndices.length > 0) {
@@ -256,7 +261,7 @@ wss.on('connection', async (ws) => {
                 setTimeout(async () => {
                     const wonPrize = prizes[winningIndex];
                     
-                    // Deduct prize quantity by 1, and set disabled = TRUE if quantity reaches 0
+                    // Deduct quantity by 1, disable if quantity <= 0
                     await pool.query(`
                         UPDATE prizes 
                         SET quantity = quantity - 1,
@@ -269,13 +274,11 @@ wss.on('connection', async (ws) => {
 
                     const timeString = new Date().toLocaleTimeString();
 
-                    // Update User Record
                     await pool.query(
                         'UPDATE users SET won_prize = $1, spun_at = NOW() WHERE user_id = $2',
                         [wonPrize.label, userId]
                     );
 
-                    // Insert into Winners Table
                     await pool.query(
                         'INSERT INTO winners (user_id, prize_id, prize_name) VALUES ($1, $2, $3)',
                         [userId, wonPrize.id, wonPrize.label]
@@ -311,27 +314,65 @@ wss.on('connection', async (ws) => {
                 }, 4100);
             }
 
-            // 3. Admin Wheel Actions
+            // 3. PRIZE CRUD OPERATIONS
+
+            // CREATE PRIZE
             if (data.type === 'ADD_PRIZE' && !isSpinning) {
-                const { label, color, quantity } = data.prize;
-                const qty = parseInt(quantity) || 1;
+                const { label, color, initial_quantity, quantity } = data.prize || data;
+                const qty = parseInt(initial_quantity || quantity) || 1;
                 await pool.query(
                     'INSERT INTO prizes (label, color, disabled, quantity, initial_quantity) VALUES ($1, $2, FALSE, $3, $4)', 
                     [label, color || '#0a4d70', qty, qty]
                 );
-                prizes = await getPrizesFromDB();
-                broadcast({ type: 'UPDATE_PRIZES', prizes });
+                await broadcastPrizeData();
             }
 
-            if (data.type === 'REMOVE_PRIZE' && !isSpinning) {
-                const prizeToDelete = prizes[data.index];
-                if (prizeToDelete) {
-                    await pool.query('DELETE FROM prizes WHERE id = $1', [prizeToDelete.id]);
-                    prizes = await getPrizesFromDB();
-                    broadcast({ type: 'UPDATE_PRIZES', prizes });
+            // UPDATE PRIZE (Edit Label and Initial Quantity only)
+            if (data.type === 'UPDATE_PRIZE' && !isSpinning) {
+                const { id, label, initial_quantity } = data;
+                const newInitialQty = parseInt(initial_quantity) || 1;
+
+                const currentPrizeRes = await pool.query('SELECT quantity, initial_quantity FROM prizes WHERE id = $1', [id]);
+
+                if (currentPrizeRes.rows.length > 0) {
+                    const oldInitialQty = currentPrizeRes.rows[0].initial_quantity;
+                    const oldQty = currentPrizeRes.rows[0].quantity;
+
+                    // Calculate won items count
+                    const wonCount = oldInitialQty - oldQty;
+
+                    // Calculate new available quantity
+                    let newQty = newInitialQty - wonCount;
+                    if (newQty < 0) newQty = 0;
+
+                    const isDisabled = newQty <= 0;
+
+                    await pool.query(
+                        `UPDATE prizes 
+                         SET label = $1, 
+                             initial_quantity = $2, 
+                             quantity = $3, 
+                             disabled = $4 
+                         WHERE id = $5`,
+                        [label, newInitialQty, newQty, isDisabled, id]
+                    );
+
+                    await broadcastPrizeData();
                 }
             }
 
+            // DELETE PRIZE
+            if (data.type === 'DELETE_PRIZE' || data.type === 'REMOVE_PRIZE') {
+                if (!isSpinning) {
+                    const prizeId = data.id || (prizes[data.index] ? prizes[data.index].id : null);
+                    if (prizeId) {
+                        await pool.query('DELETE FROM prizes WHERE id = $1', [prizeId]);
+                        await broadcastPrizeData();
+                    }
+                }
+            }
+
+            // RESET ALL PRIZES
             if (data.type === 'RESET_PRIZES' && !isSpinning) {
                 await pool.query('DELETE FROM prizes');
                 for (const prize of defaultPrizes) {
@@ -340,15 +381,14 @@ wss.on('connection', async (ws) => {
                         [prize.label, prize.color, prize.disabled, prize.quantity, prize.initial_quantity]
                     );
                 }
-                prizes = await getPrizesFromDB();
-                broadcast({ type: 'UPDATE_PRIZES', prizes });
+                await broadcastPrizeData();
             }
 
+            // RESET SPUN USERS & REFILL PRIZES
             if (data.type === 'RESET_SPUN_USERS') {
                 await pool.query('UPDATE users SET has_spun = 0, won_prize = NULL, spun_at = NULL');
                 await pool.query('DELETE FROM winners');
                 await pool.query('UPDATE prizes SET quantity = initial_quantity, disabled = FALSE');
-                prizes = await getPrizesFromDB();
                 historyLog = [];
                 broadcast({ 
                     type: 'SYSTEM_MESSAGE', 
@@ -356,7 +396,7 @@ wss.on('connection', async (ws) => {
                     historyLog: [],
                     winners: [] 
                 });
-                broadcast({ type: 'UPDATE_PRIZES', prizes });
+                await broadcastPrizeData();
                 await broadcastUserData();
             }
 

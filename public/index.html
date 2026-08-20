@@ -229,6 +229,17 @@
         let loggedInUserName = null;
         let currentRotation = 0;
 
+        // Sync history records to mark won prizes in UI
+        function syncWonPrizes() {
+            if (!prizes || !historyLog) return;
+            const wonPrizeNames = historyLog.map(h => h.prize || h.won_prize || h.prizeName);
+            prizes.forEach(prize => {
+                if (wonPrizeNames.includes(prize.label)) {
+                    prize.disabled = true;
+                }
+            });
+        }
+
         function drawWheel() {
             if (prizes.length === 0) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -273,7 +284,7 @@
 
         function updateHistoryUI() {
             const listHTML = historyLog.map(record => 
-                `<li><strong>${record.userName}</strong> won <strong>${record.prize}</strong> at ${record.time}</li>`
+                `<li><strong>${record.userName || record.name}</strong> won <strong>${record.prize || record.won_prize}</strong> at ${record.time || record.spun_at}</li>`
             ).join('');
 
             modalWinnerList.innerHTML = listHTML || '<li>No winners yet!</li>';
@@ -299,6 +310,7 @@
             if (data.type === 'INIT') {
                 prizes = data.prizes;
                 if (data.historyLog) historyLog = data.historyLog;
+                syncWonPrizes();
                 drawWheel();
                 updateHistoryUI();
             } 
@@ -311,7 +323,7 @@
                     statusText.textContent = "Ready to spin!";
                     
                     const availablePrizes = prizes.filter(p => !p.disabled);
-                    const alreadyWon = historyLog.some(r => r.userId === loggedInUserId);
+                    const alreadyWon = historyLog.some(r => (r.userId || r.user_id) === loggedInUserId);
                     spinBtn.disabled = data.isSpinning || alreadyWon || availablePrizes.length === 0;
                 } else {
                     loginError.style.display = 'block';
@@ -327,7 +339,9 @@
 
                 const totalPrizes = prizes.length;
                 const arcSize = (2 * Math.PI) / totalPrizes;
-                const targetAngle = (2 * Math.PI) - (data.winningIndex * arcSize) - (arcSize / 2);
+                
+                // Canvas Coordinate Fix: Top Pointer is at -90 degrees (-Math.PI / 2)
+                const targetAngle = (1.5 * Math.PI) - (data.winningIndex * arcSize) - (arcSize / 2);
                 
                 const extraRounds = 5 * (2 * Math.PI);
                 const finalRotation = extraRounds + targetAngle;
@@ -352,6 +366,7 @@
             else if (data.type === 'SPIN_COMPLETE') {
                 prizes = data.prizes;
                 historyLog.unshift(data.winRecord);
+                syncWonPrizes();
                 drawWheel();
                 updateHistoryUI();
 
@@ -361,13 +376,14 @@
                 } else {
                     statusText.textContent = `🎉 ${data.userName} won ${data.wonPrize.label}!`;
                     const availablePrizes = prizes.filter(p => !p.disabled);
-                    if (loggedInUserId && !historyLog.some(r => r.userId === loggedInUserId) && availablePrizes.length > 0) {
+                    if (loggedInUserId && !historyLog.some(r => (r.userId || r.user_id) === loggedInUserId) && availablePrizes.length > 0) {
                         spinBtn.disabled = false;
                     }
                 }
             }
             else if (data.type === 'UPDATE_PRIZES') {
                 prizes = data.prizes;
+                syncWonPrizes();
                 drawWheel();
             }
             else if (data.type === 'SYSTEM_MESSAGE') {
